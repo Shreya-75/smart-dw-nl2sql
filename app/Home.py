@@ -154,10 +154,42 @@ nav = [
     (nc3, "History",   "Browse all past queries with timestamps, SQL, outcomes, and re-run support."),
     (nc4, "Admin",     "Live DB status, schema explorer, agent diagnostics, and log viewer."),
 ]
-icons = ["&#9906;", "&#9642;", "&#9632;", "&#9654;"]  # minimal geometric shapes
 for col, title, desc in nav:
     col.markdown(f"""
     <div class="nav-card">
         <div class="nav-card-title">{title}</div>
         <div class="nav-card-desc">{desc}</div>
+    </div>""", unsafe_allow_html=True)
+
+st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
+
+# ── Visual context strip ───────────────────────────────────────────────────────
+vc1, vc2, vc3 = st.columns(3, gap="large")
+for col, url, lbl, sub in [
+    (vc1,
+     "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=600&auto=format&fit=crop&q=70",
+     "Real-World Dataset",
+     "Olist Brazilian E-Commerce · 99K orders · 2016–2018"),
+    (vc2,
+     "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=70",
+     "Agentic AI Pipeline",
+     "Five specialised agents · LLM + structured output · auto-retry"),
+    (vc3,
+     "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=70",
+     "Interactive Analytics",
+     "Plotly charts · AI insights · CSV export · full query history"),
+]:
+    col.markdown(f"""
+    <div style="border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);
+                animation:fadeInUp .65s ease;">
+        <div style="height:148px;background:url('{url}') center/cover no-repeat;
+                    position:relative;">
+            <div style="position:absolute;inset:0;background:linear-gradient(
+                        0deg,rgba(8,13,26,0.9) 0%,rgba(8,13,26,0.15) 100%);"></div>
+            <div style="position:absolute;bottom:12px;left:14px;font-size:13px;
+                        font-weight:700;color:#f1f5f9;">{lbl}</div>
+        </div>
+        <div style="padding:10px 14px;background:rgba(255,255,255,0.02);">
+            <p style="font-size:12px;color:#64748b;margin:0;line-height:1.5;">{sub}</p>
+        </div>
     </div>""", unsafe_allow_html=True)

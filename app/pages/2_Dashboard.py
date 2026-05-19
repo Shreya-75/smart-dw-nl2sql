@@ -400,7 +400,324 @@ try:
 except Exception as e:
     _chart_error(str(e))
 
+st.markdown('<div class="fancy-divider" style="margin:20px 0;"></div>', unsafe_allow_html=True)
+
+# ── Section 6: Review Score Analysis ─────────────────────────────────────────
+col_rev_dist, col_rev_cat = st.columns(2, gap="large")
+
+with col_rev_dist:
+    st.markdown('<div class="section-title">Review Score Distribution</div>', unsafe_allow_html=True)
+    try:
+        df_rscore = _q("""
+            SELECT review_score,
+                   COUNT(*) AS reviews
+            FROM   fact_sales
+            WHERE  order_status = 'delivered'
+              AND  review_score IS NOT NULL
+            GROUP  BY review_score
+            ORDER  BY review_score
+        """)
+        if not df_rscore.empty:
+            colors = ["#ef4444", "#f97316", "#f59e0b", "#10b981", "#3b82f6"]
+            fig = go.Figure(go.Bar(
+                x=df_rscore["review_score"].astype(str),
+                y=df_rscore["reviews"],
+                marker_color=colors,
+                text=df_rscore["reviews"],
+                texttemplate="%{text:,}",
+                textposition="outside",
+                textfont=dict(size=11, color="#94a3b8"),
+                hovertemplate="<b>Score %{x}</b><br>Reviews: %{y:,}<extra></extra>",
+            ))
+            fig.update_layout(**chart_layout(
+                height=300,
+                title="Customer Review Scores (1 = Worst, 5 = Best)",
+                xaxis_title="Review Score",
+                yaxis_title="Count",
+                bargap=0.25,
+            ))
+            st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+        else:
+            _chart_error("No review data.")
+    except Exception as e:
+        _chart_error(str(e))
+
+with col_rev_cat:
+    st.markdown('<div class="section-title">Best-Rated Product Categories</div>', unsafe_allow_html=True)
+    try:
+        df_rcat = _q("""
+            SELECT COALESCE(dp.product_category_name_english,
+                            dp.product_category_name) AS category,
+                   ROUND(AVG(fs.review_score), 2)     AS avg_review,
+                   COUNT(*)                           AS reviews
+            FROM   fact_sales fs
+            JOIN   dim_products dp ON fs.product_id = dp.product_id
+            WHERE  fs.order_status = 'delivered'
+              AND  fs.review_score IS NOT NULL
+            GROUP  BY category
+            HAVING COUNT(*) > 100
+            ORDER  BY avg_review DESC
+            LIMIT  12
+        """)
+        if not df_rcat.empty:
+            df_rcat["category"] = df_rcat["category"].str.replace("_", " ").str.title().str[:28]
+            fig = px.bar(
+                df_rcat.sort_values("avg_review"), x="avg_review", y="category",
+                orientation="h",
+                title="Top 12 Categories — Average Review Score",
+                color="avg_review",
+                color_continuous_scale=[[0, "#1e3a8a"], [0.5, "#3b82f6"], [1, "#10b981"]],
+                text="avg_review",
+            )
+            fig.update_traces(
+                texttemplate="%{text:.2f}",
+                textposition="outside",
+                textfont=dict(size=10, color="#94a3b8"),
+                marker_line_width=0,
+            )
+            fig.update_coloraxes(showscale=False)
+            fig.update_layout(**chart_layout(
+                height=360,
+                xaxis_title="Average Score", yaxis_title=None,
+                xaxis_range=[0, 5.5],
+                yaxis_tickfont=dict(size=11),
+            ))
+            st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+        else:
+            _chart_error("No data.")
+    except Exception as e:
+        _chart_error(str(e))
+
+st.markdown('<div class="fancy-divider" style="margin:20px 0;"></div>', unsafe_allow_html=True)
+
+# ── Section 7: Late Delivery Intelligence ────────────────────────────────────
+col_late, col_delay = st.columns(2, gap="large")
+
+with col_late:
+    st.markdown('<div class="section-title">Late Delivery Rate by State</div>', unsafe_allow_html=True)
+    try:
+        df_late = _q("""
+            SELECT dc.customer_state AS state,
+                   COUNT(*)          AS total_orders,
+                   ROUND(SUM(CASE WHEN fs.is_late = 1 THEN 1 ELSE 0 END) * 100.0
+                         / COUNT(*), 1) AS late_pct,
+                   ROUND(AVG(CASE WHEN fs.is_late = 1 THEN fs.delay_days END), 1) AS avg_delay
+            FROM   fact_sales fs
+            JOIN   dim_customers dc ON fs.customer_id = dc.customer_id
+            WHERE  fs.order_status = 'delivered'
+            GROUP  BY dc.customer_state
+            HAVING COUNT(*) > 30
+            ORDER  BY late_pct DESC
+            LIMIT  15
+        """)
+        if not df_late.empty:
+            fig = px.bar(
+                df_late, x="state", y="late_pct",
+                title="Top 15 States — % Late Deliveries",
+                color="late_pct",
+                color_continuous_scale=[[0, "#10b981"], [0.4, "#f59e0b"], [1, "#ef4444"]],
+                text="late_pct",
+            )
+            fig.update_traces(
+                texttemplate="%{text:.1f}%",
+                textposition="outside",
+                textfont=dict(size=10, color="#94a3b8"),
+                marker_line_width=0,
+            )
+            fig.update_coloraxes(showscale=False)
+            fig.update_layout(**chart_layout(
+                height=340,
+                xaxis_title="State",
+                yaxis_title="Late Delivery Rate (%)",
+                yaxis_ticksuffix="%",
+            ))
+            st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+        else:
+            _chart_error("No late delivery data.")
+    except Exception as e:
+        _chart_error(str(e))
+
+with col_delay:
+    st.markdown('<div class="section-title">Freight Cost as % of Order Value</div>', unsafe_allow_html=True)
+    try:
+        df_freight = _q("""
+            SELECT COALESCE(dp.product_category_name_english,
+                            dp.product_category_name) AS category,
+                   ROUND(AVG(fs.freight_value), 2)   AS avg_freight,
+                   ROUND(AVG(fs.price), 2)            AS avg_price,
+                   ROUND(AVG(fs.freight_value) * 100
+                         / NULLIF(AVG(fs.price), 0), 1) AS freight_pct
+            FROM   fact_sales fs
+            JOIN   dim_products dp ON fs.product_id = dp.product_id
+            WHERE  fs.order_status = 'delivered'
+              AND  fs.price > 0
+            GROUP  BY category
+            HAVING COUNT(*) > 100
+            ORDER  BY freight_pct DESC
+            LIMIT  12
+        """)
+        if not df_freight.empty:
+            df_freight["category"] = df_freight["category"].str.replace("_", " ").str.title().str[:28]
+            fig = px.bar(
+                df_freight.sort_values("freight_pct"), x="freight_pct", y="category",
+                orientation="h",
+                title="Top 12 Categories — Freight as % of Price",
+                color="freight_pct",
+                color_continuous_scale=[[0, "#10b981"], [0.5, "#f59e0b"], [1, "#ef4444"]],
+                text="freight_pct",
+            )
+            fig.update_traces(
+                texttemplate="%{text:.1f}%",
+                textposition="outside",
+                textfont=dict(size=10, color="#94a3b8"),
+                marker_line_width=0,
+            )
+            fig.update_coloraxes(showscale=False)
+            fig.update_layout(**chart_layout(
+                height=360,
+                xaxis_title="Freight / Price (%)", yaxis_title=None,
+                yaxis_tickfont=dict(size=11),
+            ))
+            st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+        else:
+            _chart_error("No freight data.")
+    except Exception as e:
+        _chart_error(str(e))
+
+st.markdown('<div class="fancy-divider" style="margin:20px 0;"></div>', unsafe_allow_html=True)
+
+# ── Section 8: Order Timing & Payment Behaviour ───────────────────────────────
+col_dow, col_inst = st.columns(2, gap="large")
+
+with col_dow:
+    st.markdown('<div class="section-title">Orders by Day of Week</div>', unsafe_allow_html=True)
+    try:
+        df_dow = _q("""
+            SELECT dt.day_of_week,
+                   COUNT(DISTINCT fs.order_id) AS orders,
+                   ROUND(SUM(fs.payment_value), 0) AS revenue
+            FROM   fact_sales fs
+            JOIN   dim_time dt ON fs.date_key = dt.date_key
+            WHERE  fs.order_status = 'delivered'
+            GROUP  BY dt.day_of_week
+            ORDER  BY dt.day_of_week
+        """)
+        if not df_dow.empty:
+            day_labels = {1:"Mon", 2:"Tue", 3:"Wed", 4:"Thu", 5:"Fri", 6:"Sat", 7:"Sun"}
+            df_dow["day"] = df_dow["day_of_week"].map(day_labels)
+            fig = go.Figure(go.Bar(
+                x=df_dow["day"],
+                y=df_dow["orders"],
+                marker=dict(
+                    color=df_dow["orders"],
+                    colorscale=[[0,"#1e3a8a"],[0.5,"#3b82f6"],[1,"#06b6d4"]],
+                    line=dict(width=0),
+                ),
+                text=df_dow["orders"],
+                texttemplate="%{text:,}",
+                textposition="outside",
+                textfont=dict(size=10, color="#94a3b8"),
+                hovertemplate="<b>%{x}</b><br>Orders: %{y:,}<extra></extra>",
+            ))
+            fig.update_layout(**chart_layout(
+                height=300,
+                title="Order Volume by Weekday",
+                xaxis_title="Day of Week",
+                yaxis_title="Orders",
+                bargap=0.2,
+            ))
+            st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+        else:
+            _chart_error("No timing data.")
+    except Exception as e:
+        _chart_error(str(e))
+
+with col_inst:
+    st.markdown('<div class="section-title">Credit Card Instalment Breakdown</div>', unsafe_allow_html=True)
+    try:
+        df_inst = _q("""
+            SELECT payment_installments          AS installments,
+                   COUNT(*)                      AS transactions,
+                   ROUND(AVG(payment_value), 0)  AS avg_value
+            FROM   fact_sales
+            WHERE  order_status = 'delivered'
+              AND  payment_type  = 'credit_card'
+              AND  payment_installments BETWEEN 1 AND 12
+            GROUP  BY payment_installments
+            ORDER  BY payment_installments
+        """)
+        if not df_inst.empty:
+            fig = go.Figure()
+            fig.add_trace(go.Bar(
+                x=df_inst["installments"].astype(str),
+                y=df_inst["transactions"],
+                name="Transactions",
+                marker_color="rgba(59,130,246,0.7)",
+                hovertemplate="<b>%{x}x</b><br>Transactions: %{y:,}<extra></extra>",
+            ))
+            fig.add_trace(go.Scatter(
+                x=df_inst["installments"].astype(str),
+                y=df_inst["avg_value"],
+                name="Avg Value (R$)",
+                mode="lines+markers",
+                line=dict(color="#f59e0b", width=2),
+                marker=dict(size=7),
+                yaxis="y2",
+                hovertemplate="<b>%{x}x</b><br>Avg R$ %{y:,.0f}<extra></extra>",
+            ))
+            fig.update_layout(**chart_layout(
+                height=300,
+                title="Credit Card Instalments (1–12×)",
+                yaxis=dict(title="Transactions", gridcolor="rgba(255,255,255,0.05)"),
+                yaxis2=dict(title="Avg Value (R$)", overlaying="y", side="right",
+                            showgrid=False, tickfont=dict(color="#f59e0b")),
+                legend=dict(orientation="h", x=0, y=1.08),
+                xaxis_title="Instalments",
+                bargap=0.2,
+            ))
+            st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+        else:
+            _chart_error("No instalment data.")
+    except Exception as e:
+        _chart_error(str(e))
+
+st.markdown('<div class="fancy-divider" style="margin:20px 0;"></div>', unsafe_allow_html=True)
+
+# ── Dataset Context Visual Strip ──────────────────────────────────────────────
+st.markdown('<div class="section-title">Dataset Context</div>', unsafe_allow_html=True)
+img1, img2, img3 = st.columns(3, gap="large")
+for col, url, title, caption in [
+    (img1,
+     "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?w=600&auto=format&fit=crop&q=70",
+     "E-Commerce Platform",
+     "99,441 orders placed on Olist marketplace across 27 Brazilian states (2016–2018)"),
+    (img2,
+     "https://images.unsplash.com/photo-1553413077-190dd305871c?w=600&auto=format&fit=crop&q=70",
+     "Logistics & Delivery",
+     "Over 70% of orders delivered on time. Average delivery window: 12 days."),
+    (img3,
+     "https://images.unsplash.com/photo-1551288049-bebda4e38f71?w=600&auto=format&fit=crop&q=70",
+     "Agentic Analytics",
+     "Natural language → SQL → insights. Five-agent pipeline with automatic retry."),
+]:
+    col.markdown(f"""
+    <div style="border-radius:14px;overflow:hidden;border:1px solid rgba(255,255,255,0.07);
+                animation:fadeInUp .6s ease;">
+        <div style="height:160px;background:url('{url}') center/cover no-repeat;
+                    position:relative;">
+            <div style="position:absolute;inset:0;background:linear-gradient(
+                        0deg,rgba(8,13,26,0.85) 0%,rgba(8,13,26,0.2) 100%);"></div>
+            <div style="position:absolute;bottom:12px;left:14px;font-size:13px;
+                        font-weight:700;color:#f1f5f9;letter-spacing:.01em;">{title}</div>
+        </div>
+        <div style="padding:12px 14px;background:rgba(255,255,255,0.02);">
+            <p style="font-size:12px;color:#64748b;margin:0;line-height:1.55;">{caption}</p>
+        </div>
+    </div>""", unsafe_allow_html=True)
+
 st.markdown("""
-<p style="font-size:11.5px;color:#334155;text-align:center;margin-top:24px;">
-    Data cached for 5 minutes &nbsp;·&nbsp; Delivered orders only &nbsp;·&nbsp; Olist Brazilian E-Commerce 2016–2018
+<p style="font-size:11.5px;color:#334155;text-align:center;margin-top:32px;">
+    Data cached 5 min &nbsp;·&nbsp; Delivered orders only &nbsp;·&nbsp;
+    Olist Brazilian E-Commerce 2016–2018 &nbsp;·&nbsp;
+    Images: Unsplash (free licence)
 </p>""", unsafe_allow_html=True)

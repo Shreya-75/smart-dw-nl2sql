@@ -11,6 +11,12 @@ GLOBAL_CSS = """
 .stApp {
     background: #080d1a;
     font-family: 'Inter', -apple-system, 'Segoe UI', system-ui, sans-serif;
+    background-image:
+        radial-gradient(ellipse 80% 50% at 50% -10%, rgba(30,58,138,0.18) 0%, transparent 60%),
+        linear-gradient(rgba(59,130,246,0.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(59,130,246,0.03) 1px, transparent 1px);
+    background-size: 100% 100%, 48px 48px, 48px 48px;
+    background-attachment: fixed;
 }
 
 /* ── Sidebar ─────────────────────────────────────────────── */
@@ -61,6 +67,10 @@ GLOBAL_CSS = """
 @keyframes borderGlow {
     0%, 100% { border-color: rgba(99,102,241,0.2); box-shadow: 0 0 0 0 rgba(59,130,246,0); }
     50%       { border-color: rgba(59,130,246,0.5); box-shadow: 0 0 16px rgba(59,130,246,0.15); }
+}
+@keyframes shimmer {
+    0%   { background-position: -200% center; }
+    100% { background-position:  200% center; }
 }
 
 /* ── Hero Banner ─────────────────────────────────────────── */
@@ -348,18 +358,58 @@ GLOBAL_CSS = """
     background: rgba(255,255,255,0.025);
     border: 1px solid rgba(99,102,241,0.15);
     border-radius: 14px;
-    padding: 18px;
+    padding: 20px;
     height: 100%;
-    transition: border-color 0.2s;
-    animation: fadeInUp 0.5s ease;
+    transition: border-color 0.22s, box-shadow 0.22s, transform 0.22s;
+    animation: fadeInUp 0.55s ease;
+    position: relative;
+    overflow: hidden;
 }
-.insight-box:hover { border-color: rgba(99,102,241,0.3); }
-.insight-box.accent { border-left: 3px solid #10b981; }
+.insight-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    border-radius: 14px 14px 0 0;
+}
+.insight-box:hover {
+    border-color: rgba(99,102,241,0.3);
+    box-shadow: 0 8px 28px rgba(0,0,0,0.3);
+    transform: translateY(-2px);
+}
+/* Blue — Summary */
+.insight-box-blue {
+    border-color: rgba(59,130,246,0.25);
+    border-left: 3px solid #3b82f6;
+}
+.insight-box-blue::before { background: linear-gradient(90deg, #3b82f6, transparent); }
+.insight-box-blue:hover   { border-color: rgba(59,130,246,0.5); box-shadow: 0 8px 28px rgba(59,130,246,0.12); }
+/* Cyan — Trend */
+.insight-box-cyan {
+    border-color: rgba(6,182,212,0.25);
+    border-left: 3px solid #06b6d4;
+}
+.insight-box-cyan::before { background: linear-gradient(90deg, #06b6d4, transparent); }
+.insight-box-cyan:hover   { border-color: rgba(6,182,212,0.5); box-shadow: 0 8px 28px rgba(6,182,212,0.12); }
+/* Amber — Key Finding */
+.insight-box-amber {
+    border-color: rgba(245,158,11,0.25);
+    border-left: 3px solid #f59e0b;
+}
+.insight-box-amber::before { background: linear-gradient(90deg, #f59e0b, transparent); }
+.insight-box-amber:hover   { border-color: rgba(245,158,11,0.5); box-shadow: 0 8px 28px rgba(245,158,11,0.12); }
+/* Green — Recommendation */
+.insight-box-green {
+    border-color: rgba(16,185,129,0.25);
+    border-left: 3px solid #10b981;
+}
+.insight-box-green::before { background: linear-gradient(90deg, #10b981, transparent); }
+.insight-box-green:hover   { border-color: rgba(16,185,129,0.5); box-shadow: 0 8px 28px rgba(16,185,129,0.12); }
 .insight-lbl {
-    font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-    color: #475569; margin-bottom: 8px;
+    font-size: 10px; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: #475569; margin-bottom: 10px;
 }
-.insight-text { font-size: 13.5px; color: #cbd5e1; line-height: 1.65; }
+.insight-text { font-size: 13.5px; color: #cbd5e1; line-height: 1.7; }
 
 /* ── Streamlit component overrides ──────────────────────── */
 .stButton > button {
@@ -429,22 +479,30 @@ GLOBAL_CSS = """
     font-weight: 700;
 }
 .stTabs [data-baseweb="tab-list"] {
-    gap: 3px;
+    gap: 6px;
     background: rgba(255,255,255,0.025);
-    border-radius: 10px;
-    padding: 4px;
-    border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px;
+    padding: 6px 8px;
+    border: 1px solid rgba(255,255,255,0.07);
+    margin-bottom: 4px;
 }
 .stTabs [data-baseweb="tab"] {
     border-radius: 8px;
     color: #64748b;
-    font-size: 13px;
+    font-size: 13.5px;
     font-weight: 500;
-    transition: all 0.2s;
+    padding: 8px 22px !important;
+    letter-spacing: 0.02em;
+    transition: all 0.22s ease;
+}
+.stTabs [data-baseweb="tab"]:hover {
+    color: #94a3b8 !important;
+    background: rgba(255,255,255,0.04) !important;
 }
 .stTabs [aria-selected="true"] {
     background: rgba(37,99,235,0.2) !important;
     color: #60a5fa !important;
+    font-weight: 600 !important;
 }
 .streamlit-expanderHeader {
     background: rgba(255,255,255,0.02) !important;
@@ -461,11 +519,11 @@ header[data-testid="stHeader"] { background: transparent; }
 
 /* ── Page transition on navigation ──────────────────────── */
 @keyframes pageEnter {
-    from { opacity: 0; transform: translateY(16px); }
+    from { opacity: 0; transform: translateY(22px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 [data-testid="stMain"] > div:first-child {
-    animation: pageEnter 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: pageEnter 0.65s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 /* ── Larger base font sizes ──────────────────────────────── */
@@ -518,6 +576,31 @@ details.pipeline-detail[open] .step-chevron {
 [data-testid="collapsedControl"] {
     background: rgba(59,130,246,0.1) !important;
     border-radius: 0 8px 8px 0 !important;
+}
+
+/* ── Code blocks ─────────────────────────────────────────── */
+.stCodeBlock pre, .stCode pre {
+    background: rgba(0,0,0,0.35) !important;
+    border: 1px solid rgba(99,102,241,0.15) !important;
+    border-radius: 12px !important;
+}
+
+/* ── Tab content area ────────────────────────────────────── */
+[data-baseweb="tab-panel"] {
+    padding-top: 20px !important;
+}
+
+/* ── Dataframe styling ───────────────────────────────────── */
+[data-testid="stDataFrame"] thead th {
+    background: rgba(59,130,246,0.08) !important;
+    color: #94a3b8 !important;
+    font-size: 11.5px !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.06em !important;
+    text-transform: uppercase !important;
+}
+[data-testid="stDataFrame"] tbody tr:hover td {
+    background: rgba(59,130,246,0.05) !important;
 }
 </style>
 """
