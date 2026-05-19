@@ -6,6 +6,18 @@ sys.path.insert(0, ".")
 from utils.db_connection import get_engine
 
 
+def _truncate_all(engine) -> None:
+    """Truncate all tables in FK-safe order: fact first, then dims."""
+    tables = ["fact_sales", "dim_customers", "dim_products", "dim_sellers", "dim_time"]
+    with engine.connect() as conn:
+        conn.execute(text("SET FOREIGN_KEY_CHECKS=0"))
+        for t in tables:
+            conn.execute(text(f"TRUNCATE TABLE {t}"))
+        conn.execute(text("SET FOREIGN_KEY_CHECKS=1"))
+        conn.commit()
+    logger.info("All tables truncated")
+
+
 def load_dim_time(engine, orders_df: pd.DataFrame) -> None:
     min_date = orders_df["order_purchase_timestamp"].min().date()
     max_date = orders_df["order_purchase_timestamp"].max().date()
@@ -22,7 +34,7 @@ def load_dim_time(engine, orders_df: pd.DataFrame) -> None:
         "is_weekend":   (dates.dayofweek >= 5).astype(int),
         "week_of_year": dates.isocalendar().week.values,
     })
-    dim_time.to_sql("dim_time", engine, if_exists="replace", index=False, chunksize=500)
+    dim_time.to_sql("dim_time", engine, if_exists="append", index=False, chunksize=500)
     logger.info(f"dim_time loaded: {len(dim_time):,} rows")
 
 
@@ -30,7 +42,7 @@ def load_dim_customers(engine, customers_df: pd.DataFrame) -> None:
     cols = ["customer_id", "customer_unique_id", "customer_city",
             "customer_state", "customer_zip_code_prefix"]
     df = customers_df[cols].copy()
-    df.to_sql("dim_customers", engine, if_exists="replace", index=False, chunksize=5000)
+    df.to_sql("dim_customers", engine, if_exists="append", index=False, chunksize=5000)
     logger.info(f"dim_customers loaded: {len(df):,} rows")
 
 
@@ -40,28 +52,25 @@ def load_dim_products(engine, products_df: pd.DataFrame) -> None:
             "product_weight_g", "product_length_cm", "product_height_cm", "product_width_cm"]
     available = [c for c in cols if c in products_df.columns]
     df = products_df[available].copy()
-    df.to_sql("dim_products", engine, if_exists="replace", index=False, chunksize=5000)
+    df.to_sql("dim_products", engine, if_exists="append", index=False, chunksize=5000)
     logger.info(f"dim_products loaded: {len(df):,} rows")
 
 
 def load_dim_sellers(engine, sellers_df: pd.DataFrame) -> None:
     cols = ["seller_id", "seller_city", "seller_state", "seller_zip_code_prefix"]
     df = sellers_df[cols].copy()
-    df.to_sql("dim_sellers", engine, if_exists="replace", index=False, chunksize=2000)
+    df.to_sql("dim_sellers", engine, if_exists="append", index=False, chunksize=2000)
     logger.info(f"dim_sellers loaded: {len(df):,} rows")
 
 
 def load_fact_sales(engine, master_df: pd.DataFrame, items_df: pd.DataFrame) -> None:
-    # Explode to item level (one row per order_item)
     fact = master_df.merge(
         items_df[["order_id", "order_item_id", "product_id", "seller_id", "price", "freight_value"]],
         on="order_id", how="left"
     )
 
-    # Add date_key
     fact["date_key"] = pd.to_datetime(fact["order_purchase_timestamp"]).dt.strftime("%Y%m%d").astype(int)
 
-    # Select and rename to final schema
     final_cols = {
         "order_id": "order_id",
         "order_item_id": "order_item_id",
@@ -85,27 +94,33 @@ def load_fact_sales(engine, master_df: pd.DataFrame, items_df: pd.DataFrame) -> 
     available = {k: v for k, v in final_cols.items() if k in fact.columns}
     fact_final = fact[list(available.keys())].rename(columns=available)
 
-    fact_final.to_sql("fact_sales", engine, if_exists="replace",
+    fact_final.to_sql("fact_sales", engine, if_exists="append",
                       index=False, chunksize=5000, method="multi")
     logger.info(f"fact_sales loaded: {len(fact_final):,} rows")
 
 
 def apply_indexes(engine) -> None:
     indexes = [
-        "CREATE INDEX IF NOT EXISTS idx_fact_date ON fact_sales(date_key)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_customer ON fact_sales(customer_id)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_product ON fact_sales(product_id)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_seller ON fact_sales(seller_id)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_status ON fact_sales(order_status)",
-        "CREATE INDEX IF NOT EXISTS idx_cust_state ON dim_customers(customer_state)",
-        "CREATE INDEX IF NOT EXISTS idx_prod_cat ON dim_products(product_category_name_english(50))",
-        "CREATE INDEX IF NOT EXISTS idx_time_year ON dim_time(year, month)",
+        "CREATE INDEX idx_fact_date ON fact_sales(date_key)",
+        "CREATE INDEX idx_fact_customer ON fact_sales(customer_id)",
+        "CREATE INDEX idx_fact_product ON fact_sales(product_id, payment_value)",
+        "CREATE INDEX idx_fact_seller ON fact_sales(seller_id, review_score)",
+        "CREATE INDEX idx_fact_status ON fact_sales(order_status)",
+        "CREATE INDEX idx_cust_state ON dim_customers(customer_state)",
+        "CREATE INDEX idx_prod_cat ON dim_products(product_category_name_english(50))",
+        "CREATE INDEX idx_time_year ON dim_time(year, month)",
     ]
+    created, skipped = 0, 0
     with engine.connect() as conn:
         for sql in indexes:
             try:
                 conn.execute(text(sql))
+                created += 1
             except Exception as e:
-                logger.warning(f"Index warning: {e}")
+                err = str(e)
+                if "Duplicate key name" in err or "1061" in err:
+                    skipped += 1  # index already exists — expected on re-runs
+                else:
+                    logger.warning(f"Index error: {e}")
         conn.commit()
-    logger.info("Indexes applied")
+    logger.info(f"Indexes: {created} created, {skipped} already existed")

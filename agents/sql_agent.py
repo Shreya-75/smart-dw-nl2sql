@@ -4,9 +4,10 @@ Generates a MySQL SELECT query from structured intent + schema context.
 """
 import json
 import re
-from openai import OpenAI
+import sys
+sys.path.insert(0, ".")
 from loguru import logger
-import config
+from utils.llm_client import chat
 
 SCHEMA_CONTEXT = """
 DATABASE SCHEMA (MySQL 8.0, database: olist_dw):
@@ -33,44 +34,10 @@ fact_sales(
   approval_time_hours DECIMAL(8,2)
 )
 
-dim_customers(
-  customer_id VARCHAR(36) PRIMARY KEY,
-  customer_unique_id VARCHAR(36),
-  customer_city VARCHAR(100),
-  customer_state CHAR(2),
-  customer_zip_code_prefix VARCHAR(10)
-)
-
-dim_products(
-  product_id VARCHAR(36) PRIMARY KEY,
-  product_category_name VARCHAR(100),
-  product_category_name_english VARCHAR(100),
-  product_name_length INT,
-  product_description_length INT,
-  product_weight_g DECIMAL(8,2),
-  product_length_cm DECIMAL(6,2),
-  product_height_cm DECIMAL(6,2),
-  product_width_cm DECIMAL(6,2)
-)
-
-dim_sellers(
-  seller_id VARCHAR(36) PRIMARY KEY,
-  seller_city VARCHAR(100),
-  seller_state CHAR(2),
-  seller_zip_code_prefix VARCHAR(10)
-)
-
-dim_time(
-  date_key INT PRIMARY KEY,
-  full_date DATE,
-  day TINYINT,
-  month TINYINT,
-  year SMALLINT,
-  quarter TINYINT,
-  day_of_week VARCHAR(10),
-  is_weekend TINYINT(1),
-  week_of_year TINYINT
-)
+dim_customers(customer_id PK, customer_unique_id, customer_city, customer_state, customer_zip_code_prefix)
+dim_products(product_id PK, product_category_name, product_category_name_english, product_weight_g, product_length_cm, product_height_cm, product_width_cm)
+dim_sellers(seller_id PK, seller_city, seller_state, seller_zip_code_prefix)
+dim_time(date_key PK, full_date, day, month, year, quarter, day_of_week, is_weekend, week_of_year)
 
 JOIN CONDITIONS:
   fact_sales.customer_id = dim_customers.customer_id
@@ -94,8 +61,6 @@ RULES:
 8. Return ONLY the raw SQL — no markdown, no explanation, no triple backticks
 """
 
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-
 
 def generate_sql(intent: dict, user_query: str, error_feedback: str = "") -> str:
     user_msg = f"User question: {user_query}\nParsed intent: {json.dumps(intent, indent=2)}"
@@ -103,17 +68,16 @@ def generate_sql(intent: dict, user_query: str, error_feedback: str = "") -> str
         user_msg += f"\n\nPrevious SQL had this error — fix it:\n{error_feedback}"
     user_msg += "\n\nGenerate the MySQL SELECT query:"
 
-    response = client.chat.completions.create(
-        model=config.OPENAI_MODEL,
+    sql = chat(
         messages=[
             {"role": "system", "content": SQL_SYSTEM},
             {"role": "user", "content": user_msg},
         ],
+        json_mode=False,
         temperature=0,
     )
 
-    sql = response.choices[0].message.content.strip()
-    # Strip markdown fences if model ignores rule
+    sql = sql.strip()
     sql = re.sub(r"```(?:sql)?", "", sql).strip().rstrip("```").strip()
     logger.debug(f"Agent 2 generated SQL:\n{sql}")
     return sql

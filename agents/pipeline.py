@@ -3,6 +3,7 @@ Pipeline Orchestrator — chains all 5 agents with retry logic and logging.
 """
 import time
 import json
+from datetime import datetime, timezone
 from pathlib import Path
 from dataclasses import dataclass, field
 from typing import Optional
@@ -58,7 +59,6 @@ def run_pipeline(user_query: str) -> PipelineResult:
                 result.retry_count = attempt
                 if attempt == config.MAX_RETRY_ATTEMPTS:
                     result.error_message = f"SQL validation failed after {attempt} attempts: {error_feedback}"
-                    _log_event(result, start)
                     return result
                 continue
 
@@ -72,7 +72,6 @@ def run_pipeline(user_query: str) -> PipelineResult:
                 result.retry_count = attempt
                 if attempt == config.MAX_RETRY_ATTEMPTS:
                     result.error_message = f"Execution failed after {attempt} attempts: {error_feedback}"
-                    _log_event(result, start)
                     return result
 
         # ── Agent 5: Insight Generation ──
@@ -94,6 +93,7 @@ def run_pipeline(user_query: str) -> PipelineResult:
 
 def _log_event(result: PipelineResult, start: float) -> None:
     event = {
+        "timestamp": datetime.now(timezone.utc).isoformat(),
         "user_query": result.user_query,
         "intent": result.intent,
         "sql": result.sql,

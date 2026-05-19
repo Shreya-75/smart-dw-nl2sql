@@ -85,9 +85,9 @@ CREATE TABLE IF NOT EXISTS fact_sales (
     CONSTRAINT fk_fact_time     FOREIGN KEY (date_key)    REFERENCES dim_time(date_key)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-CREATE INDEX idx_fact_date     ON fact_sales(date_key);
-CREATE INDEX idx_fact_customer ON fact_sales(customer_id);
-CREATE INDEX idx_fact_product  ON fact_sales(product_id);
-CREATE INDEX idx_fact_seller   ON fact_sales(seller_id);
-CREATE INDEX idx_fact_status   ON fact_sales(order_status);
-CREATE INDEX idx_fact_date_cust ON fact_sales(date_key, customer_id);
+CREATE INDEX idx_fact_date        ON fact_sales(date_key);
+CREATE INDEX idx_fact_customer    ON fact_sales(customer_id);
+CREATE INDEX idx_fact_product     ON fact_sales(product_id, payment_value);
+CREATE INDEX idx_fact_seller      ON fact_sales(seller_id, review_score);
+CREATE INDEX idx_fact_status      ON fact_sales(order_status);
+CREATE INDEX idx_fact_date_cust   ON fact_sales(date_key, customer_id);
