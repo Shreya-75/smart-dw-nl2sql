@@ -603,8 +603,16 @@ with col_dow:
             ORDER  BY dt.day_of_week
         """)
         if not df_dow.empty:
-            day_labels = {1:"Mon", 2:"Tue", 3:"Wed", 4:"Thu", 5:"Fri", 6:"Sat", 7:"Sun"}
+            mn = int(df_dow["day_of_week"].min())
+            if mn == 0:
+                # pandas dayofweek: 0=Mon … 6=Sun
+                day_labels = {0:"Mon",1:"Tue",2:"Wed",3:"Thu",4:"Fri",5:"Sat",6:"Sun"}
+            else:
+                # MySQL DAYOFWEEK: 1=Sun, 2=Mon … 7=Sat
+                day_labels = {1:"Sun",2:"Mon",3:"Tue",4:"Wed",5:"Thu",6:"Fri",7:"Sat"}
             df_dow["day"] = df_dow["day_of_week"].map(day_labels)
+            # Fallback: if mapping produced NaN, show raw numbers
+            df_dow["day"] = df_dow["day"].fillna(df_dow["day_of_week"].astype(str))
             fig = go.Figure(go.Bar(
                 x=df_dow["day"],
                 y=df_dow["orders"],

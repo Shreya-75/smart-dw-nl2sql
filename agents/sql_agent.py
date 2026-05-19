@@ -101,6 +101,15 @@ def generate_sql(intent: dict, user_query: str, error_feedback: str = "") -> str
     )
 
     sql = sql.strip()
-    sql = re.sub(r"```(?:sql)?", "", sql).strip().rstrip("```").strip()
+    # Strip markdown code fences
+    sql = re.sub(r"```(?:sql)?\s*", "", sql, flags=re.IGNORECASE).strip().strip("`").strip()
+    # Locate first SELECT keyword — strips any intro prose the model prepends
+    m = re.search(r"\bSELECT\b", sql, re.IGNORECASE)
+    if m:
+        sql = sql[m.start():]
+        # Stop at first blank line (separates SQL from trailing explanation text)
+        sql = re.split(r"\n[ \t]*\n", sql)[0]
+    # Remove trailing semicolon
+    sql = sql.rstrip(";").strip()
     logger.debug(f"Agent 2 generated SQL:\n{sql}")
     return sql

@@ -44,7 +44,7 @@ GLOBAL_CSS = """
 
 /* ── Animations ──────────────────────────────────────────── */
 @keyframes fadeInUp {
-    from { opacity: 0; transform: translateY(22px); }
+    from { opacity: 0; transform: translateY(26px); }
     to   { opacity: 1; transform: translateY(0); }
 }
 @keyframes fadeIn {
@@ -52,7 +52,7 @@ GLOBAL_CSS = """
     to   { opacity: 1; }
 }
 @keyframes slideInLeft {
-    from { opacity: 0; transform: translateX(-18px); }
+    from { opacity: 0; transform: translateX(-22px); }
     to   { opacity: 1; transform: translateX(0); }
 }
 @keyframes gradientFlow {
@@ -141,8 +141,8 @@ GLOBAL_CSS = """
     text-align: center;
     position: relative;
     overflow: hidden;
-    animation: fadeInUp 0.55s ease forwards;
-    transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+    animation: fadeInUp 0.7s cubic-bezier(0.16,1,0.3,1) both;
+    transition: transform 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
     cursor: default;
 }
 .kpi-card::before {
@@ -519,11 +519,11 @@ header[data-testid="stHeader"] { background: transparent; }
 
 /* ── Page transition on navigation ──────────────────────── */
 @keyframes pageEnter {
-    from { opacity: 0; transform: translateY(22px); }
-    to   { opacity: 1; transform: translateY(0); }
+    0%   { opacity: 0; transform: translateY(28px) scale(0.99); }
+    100% { opacity: 1; transform: translateY(0)    scale(1);    }
 }
 [data-testid="stMain"] > div:first-child {
-    animation: pageEnter 0.65s cubic-bezier(0.22, 1, 0.36, 1);
+    animation: pageEnter 0.85s cubic-bezier(0.16, 1, 0.3, 1) both;
 }
 
 /* ── Larger base font sizes ──────────────────────────────── */
