@@ -4,11 +4,15 @@ import os
 load_dotenv()
 
 # ── LLM Provider ──
-LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" | "openai"
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" | "groq" | "openai"
 
-# ── OpenAI (unused when LLM_PROVIDER=ollama) ──
+# ── OpenAI (unused when LLM_PROVIDER=ollama/groq) ──
 OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL     = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# ── Groq (free cloud LLM — faster + larger than local Ollama) ──
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "")
+GROQ_MODEL   = os.getenv("GROQ_MODEL", "llama3-70b-8192")
 
 # ── MySQL ──
 DB_HOST     = os.getenv("DB_HOST", "localhost")

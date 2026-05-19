@@ -3,9 +3,10 @@ Agent 1 — Query Understanding Agent
 Converts natural language → structured JSON intent.
 """
 import json
-import ollama
+import sys
+sys.path.insert(0, ".")
 from loguru import logger
-import config
+from utils.llm_client import chat
 
 SYSTEM_PROMPT = """You are a query understanding agent for a data warehouse about Brazilian e-commerce (Olist dataset, 2016–2018).
 
@@ -27,17 +28,15 @@ Available tables: fact_sales, dim_customers, dim_products, dim_sellers, dim_time
 def understand_query(user_query: str) -> dict:
     logger.debug(f"Agent 1 input: {user_query}")
 
-    response = ollama.chat(
-        model=config.OLLAMA_MODEL,
+    content = chat(
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_query},
         ],
-        format="json",
-        options={"temperature": 0},
+        json_mode=True,
+        temperature=0,
     )
 
-    content = response["message"]["content"]
     intent = json.loads(content)
     logger.debug(f"Agent 1 output: {intent}")
     return intent
