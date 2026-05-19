@@ -11,7 +11,7 @@ from etl.data_cleaning import clean_all
 from etl.feature_engineering import engineer_features
 from etl.data_loading import (
     load_dim_time, load_dim_customers, load_dim_products,
-    load_dim_sellers, load_fact_sales, apply_indexes
+    load_dim_sellers, load_fact_sales, apply_indexes, _truncate_all
 )
 from utils.db_connection import get_engine, test_connection
 
@@ -47,6 +47,7 @@ def main():
     logger.info("\n[STEP 4] Loading to MySQL (star schema)")
     engine = get_engine()
 
+    _truncate_all(engine)
     load_dim_time(engine, dfs["orders"])
     load_dim_customers(engine, dfs["customers"])
     load_dim_products(engine, dfs["products"])
