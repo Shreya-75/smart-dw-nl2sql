@@ -73,8 +73,8 @@ def validate_sql(sql: str) -> ValidationResult:
     if not parsed:
         errors.append("Failed to parse SQL — may be malformed")
 
-    # ── Known table references ──
-    table_refs = re.findall(r'\b(fact_sales|dim_\w+)\b', sql, re.IGNORECASE)
+    # ── Known table references — extract from FROM/JOIN clauses ──
+    table_refs = re.findall(r'\b(?:FROM|JOIN)\s+(\w+)', sql, re.IGNORECASE)
     for t in set(t.lower() for t in table_refs):
         if t not in KNOWN_TABLES:
             errors.append(f"Unknown table referenced: '{t}'")

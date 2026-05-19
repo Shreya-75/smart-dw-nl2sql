@@ -58,7 +58,6 @@ def run_pipeline(user_query: str) -> PipelineResult:
                 result.retry_count = attempt
                 if attempt == config.MAX_RETRY_ATTEMPTS:
                     result.error_message = f"SQL validation failed after {attempt} attempts: {error_feedback}"
-                    _log_event(result, start)
                     return result
                 continue
 
@@ -72,7 +71,6 @@ def run_pipeline(user_query: str) -> PipelineResult:
                 result.retry_count = attempt
                 if attempt == config.MAX_RETRY_ATTEMPTS:
                     result.error_message = f"Execution failed after {attempt} attempts: {error_feedback}"
-                    _log_event(result, start)
                     return result
 
         # ── Agent 5: Insight Generation ──

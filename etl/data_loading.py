@@ -101,20 +101,26 @@ def load_fact_sales(engine, master_df: pd.DataFrame, items_df: pd.DataFrame) -> 
 
 def apply_indexes(engine) -> None:
     indexes = [
-        "CREATE INDEX IF NOT EXISTS idx_fact_date ON fact_sales(date_key)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_customer ON fact_sales(customer_id)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_product ON fact_sales(product_id)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_seller ON fact_sales(seller_id)",
-        "CREATE INDEX IF NOT EXISTS idx_fact_status ON fact_sales(order_status)",
-        "CREATE INDEX IF NOT EXISTS idx_cust_state ON dim_customers(customer_state)",
-        "CREATE INDEX IF NOT EXISTS idx_prod_cat ON dim_products(product_category_name_english(50))",
-        "CREATE INDEX IF NOT EXISTS idx_time_year ON dim_time(year, month)",
+        "CREATE INDEX idx_fact_date ON fact_sales(date_key)",
+        "CREATE INDEX idx_fact_customer ON fact_sales(customer_id)",
+        "CREATE INDEX idx_fact_product ON fact_sales(product_id, payment_value)",
+        "CREATE INDEX idx_fact_seller ON fact_sales(seller_id, review_score)",
+        "CREATE INDEX idx_fact_status ON fact_sales(order_status)",
+        "CREATE INDEX idx_cust_state ON dim_customers(customer_state)",
+        "CREATE INDEX idx_prod_cat ON dim_products(product_category_name_english(50))",
+        "CREATE INDEX idx_time_year ON dim_time(year, month)",
     ]
+    created, skipped = 0, 0
     with engine.connect() as conn:
         for sql in indexes:
             try:
                 conn.execute(text(sql))
+                created += 1
             except Exception as e:
-                logger.warning(f"Index warning: {e}")
+                err = str(e)
+                if "Duplicate key name" in err or "1061" in err:
+                    skipped += 1  # index already exists — expected on re-runs
+                else:
+                    logger.warning(f"Index error: {e}")
         conn.commit()
-    logger.info("Indexes applied")
+    logger.info(f"Indexes: {created} created, {skipped} already existed")

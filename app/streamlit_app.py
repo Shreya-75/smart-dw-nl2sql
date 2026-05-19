@@ -42,6 +42,34 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
+# ── Helper: auto chart selection (must be defined before page routing) ────────
+def _render_auto_chart(df: pd.DataFrame, query: str):
+    if df.empty or len(df.columns) < 2:
+        return
+
+    num_cols = df.select_dtypes(include="number").columns.tolist()
+    cat_cols = df.select_dtypes(exclude="number").columns.tolist()
+
+    if not num_cols:
+        return
+
+    y_col = num_cols[0]
+    x_col = cat_cols[0] if cat_cols else df.columns[0]
+
+    q_lower = query.lower()
+    if any(w in q_lower for w in ["trend", "monthly", "over time", "by month", "by year"]):
+        fig = px.line(df, x=x_col, y=y_col, title="Trend", markers=True,
+                      color_discrete_sequence=["#1a73e8"])
+    elif any(w in q_lower for w in ["percentage", "split", "share", "proportion", "pie"]):
+        fig = px.pie(df, names=x_col, values=y_col, title="Distribution")
+    else:
+        fig = px.bar(df, x=x_col, y=y_col, title="Result",
+                     color=y_col, color_continuous_scale="Blues")
+
+    fig.update_layout(template="plotly_dark")
+    st.plotly_chart(fig, use_container_width=True)
+
+
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.image("https://img.shields.io/badge/Smart%20DW-NL2SQL-blue?style=for-the-badge", width=200)
@@ -320,29 +348,3 @@ elif page == "📜 History":
                 st.caption(f"Rows: {h['rows']} | Duration: {h['duration_ms']}ms")
 
 
-# ── Helper: auto chart selection ───────────────────────────────────────────────
-def _render_auto_chart(df: pd.DataFrame, query: str):
-    if df.empty or len(df.columns) < 2:
-        return
-
-    num_cols  = df.select_dtypes(include="number").columns.tolist()
-    cat_cols  = df.select_dtypes(exclude="number").columns.tolist()
-
-    if not num_cols:
-        return
-
-    y_col = num_cols[0]
-    x_col = cat_cols[0] if cat_cols else df.columns[0]
-
-    q_lower = query.lower()
-    if any(w in q_lower for w in ["trend", "monthly", "over time", "by month", "by year"]):
-        fig = px.line(df, x=x_col, y=y_col, title="Trend", markers=True,
-                      color_discrete_sequence=["#1a73e8"])
-    elif any(w in q_lower for w in ["percentage", "split", "share", "proportion", "pie"]):
-        fig = px.pie(df, names=x_col, values=y_col, title="Distribution")
-    else:
-        fig = px.bar(df, x=x_col, y=y_col, title="Result",
-                     color=y_col, color_continuous_scale="Blues")
-
-    fig.update_layout(template="plotly_dark")
-    st.plotly_chart(fig, use_container_width=True)
