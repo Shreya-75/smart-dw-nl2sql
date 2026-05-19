@@ -3,12 +3,10 @@ Agent 5 — Insight Generation Agent
 Converts query results into business-readable summaries and recommendations.
 """
 import json
+import ollama
 import pandas as pd
-from openai import OpenAI
 from loguru import logger
 import config
-
-client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 
 def generate_insights(user_query: str, sql: str, df: pd.DataFrame) -> dict:
@@ -46,13 +44,13 @@ Provide a structured JSON analysis with exactly these keys:
 
 Return ONLY valid JSON."""
 
-    response = client.chat.completions.create(
-        model=config.OPENAI_MODEL,
+    response = ollama.chat(
+        model=config.OLLAMA_MODEL,
         messages=[{"role": "user", "content": prompt}],
-        response_format={"type": "json_object"},
-        temperature=0.3,
+        format="json",
+        options={"temperature": 0.3},
     )
 
-    insights = json.loads(response.choices[0].message.content)
+    insights = json.loads(response["message"]["content"])
     logger.debug(f"Agent 5 insights: {insights}")
     return insights

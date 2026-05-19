@@ -3,7 +3,10 @@ import os
 
 load_dotenv()
 
-# ── OpenAI ──
+# ── LLM Provider ──
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" | "openai"
+
+# ── OpenAI (unused when LLM_PROVIDER=ollama) ──
 OPENAI_API_KEY   = os.getenv("OPENAI_API_KEY", "")
 OPENAI_MODEL     = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 

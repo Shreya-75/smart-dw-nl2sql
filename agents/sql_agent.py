@@ -4,7 +4,7 @@ Generates a MySQL SELECT query from structured intent + schema context.
 """
 import json
 import re
-from openai import OpenAI
+import ollama
 from loguru import logger
 import config
 
@@ -94,8 +94,6 @@ RULES:
 8. Return ONLY the raw SQL — no markdown, no explanation, no triple backticks
 """
 
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-
 
 def generate_sql(intent: dict, user_query: str, error_feedback: str = "") -> str:
     user_msg = f"User question: {user_query}\nParsed intent: {json.dumps(intent, indent=2)}"
@@ -103,16 +101,16 @@ def generate_sql(intent: dict, user_query: str, error_feedback: str = "") -> str
         user_msg += f"\n\nPrevious SQL had this error — fix it:\n{error_feedback}"
     user_msg += "\n\nGenerate the MySQL SELECT query:"
 
-    response = client.chat.completions.create(
-        model=config.OPENAI_MODEL,
+    response = ollama.chat(
+        model=config.OLLAMA_MODEL,
         messages=[
             {"role": "system", "content": SQL_SYSTEM},
             {"role": "user", "content": user_msg},
         ],
-        temperature=0,
+        options={"temperature": 0},
     )
 
-    sql = response.choices[0].message.content.strip()
+    sql = response["message"]["content"].strip()
     # Strip markdown fences if model ignores rule
     sql = re.sub(r"```(?:sql)?", "", sql).strip().rstrip("```").strip()
     logger.debug(f"Agent 2 generated SQL:\n{sql}")

@@ -3,8 +3,7 @@ Agent 1 — Query Understanding Agent
 Converts natural language → structured JSON intent.
 """
 import json
-import os
-from openai import OpenAI
+import ollama
 from loguru import logger
 import config
 
@@ -24,22 +23,21 @@ JSON fields:
 Available tables: fact_sales, dim_customers, dim_products, dim_sellers, dim_time
 """
 
-client = OpenAI(api_key=config.OPENAI_API_KEY)
-
 
 def understand_query(user_query: str) -> dict:
     logger.debug(f"Agent 1 input: {user_query}")
 
-    response = client.chat.completions.create(
-        model=config.OPENAI_MODEL,
+    response = ollama.chat(
+        model=config.OLLAMA_MODEL,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": user_query},
         ],
-        response_format={"type": "json_object"},
-        temperature=0,
+        format="json",
+        options={"temperature": 0},
     )
 
-    intent = json.loads(response.choices[0].message.content)
+    content = response["message"]["content"]
+    intent = json.loads(content)
     logger.debug(f"Agent 1 output: {intent}")
     return intent
