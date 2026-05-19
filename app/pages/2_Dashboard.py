@@ -16,7 +16,7 @@ import plotly.graph_objects as go
 from sqlalchemy import text
 
 from utils.db_connection import get_engine, test_connection
-from app.components.styles import inject_css, CHART_LAYOUT, COLOR_SEQ, GRADIENT_BLUE_CYAN, chart_layout
+from app.components.styles import inject_css, COLOR_SEQ, GRADIENT_BLUE_CYAN, chart_layout
 
 st.set_page_config(page_title="Dashboard | Smart DW", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
@@ -586,57 +586,52 @@ with col_delay:
 
 st.markdown('<div class="fancy-divider" style="margin:20px 0;"></div>', unsafe_allow_html=True)
 
-# ── Section 8: Order Timing & Payment Behaviour ───────────────────────────────
-col_dow, col_inst = st.columns(2, gap="large")
+# ── Section 8: YoY Growth & Payment Behaviour ────────────────────────────────
+col_qyoy, col_inst = st.columns(2, gap="large")
 
-with col_dow:
-    st.markdown('<div class="section-title">Orders by Day of Week</div>', unsafe_allow_html=True)
+with col_qyoy:
+    st.markdown('<div class="section-title">Year-over-Year Quarterly Revenue</div>', unsafe_allow_html=True)
     try:
-        df_dow = _q("""
-            SELECT dt.day_of_week,
-                   COUNT(DISTINCT fs.order_id) AS orders,
-                   ROUND(SUM(fs.payment_value), 0) AS revenue
+        df_qyoy = _q("""
+            SELECT dt.year,
+                   dt.quarter,
+                   ROUND(SUM(fs.payment_value), 0) AS revenue,
+                   COUNT(DISTINCT fs.order_id)     AS orders
             FROM   fact_sales fs
             JOIN   dim_time dt ON fs.date_key = dt.date_key
             WHERE  fs.order_status = 'delivered'
-            GROUP  BY dt.day_of_week
-            ORDER  BY dt.day_of_week
+              AND  dt.year IN (2017, 2018)
+            GROUP  BY dt.year, dt.quarter
+            ORDER  BY dt.year, dt.quarter
         """)
-        if not df_dow.empty:
-            mn = int(df_dow["day_of_week"].min())
-            if mn == 0:
-                # pandas dayofweek: 0=Mon … 6=Sun
-                day_labels = {0:"Mon",1:"Tue",2:"Wed",3:"Thu",4:"Fri",5:"Sat",6:"Sun"}
-            else:
-                # MySQL DAYOFWEEK: 1=Sun, 2=Mon … 7=Sat
-                day_labels = {1:"Sun",2:"Mon",3:"Tue",4:"Wed",5:"Thu",6:"Fri",7:"Sat"}
-            df_dow["day"] = df_dow["day_of_week"].map(day_labels)
-            # Fallback: if mapping produced NaN, show raw numbers
-            df_dow["day"] = df_dow["day"].fillna(df_dow["day_of_week"].astype(str))
-            fig = go.Figure(go.Bar(
-                x=df_dow["day"],
-                y=df_dow["orders"],
-                marker=dict(
-                    color=df_dow["orders"],
-                    colorscale=[[0,"#1e3a8a"],[0.5,"#3b82f6"],[1,"#06b6d4"]],
-                    line=dict(width=0),
-                ),
-                text=df_dow["orders"],
-                texttemplate="%{text:,}",
+        if not df_qyoy.empty:
+            df_qyoy["year"]          = df_qyoy["year"].astype(str)
+            df_qyoy["quarter_label"] = "Q" + df_qyoy["quarter"].astype(str)
+            fig = px.bar(
+                df_qyoy, x="quarter_label", y="revenue",
+                color="year", barmode="group",
+                title="Revenue by Quarter — 2017 vs 2018",
+                color_discrete_map={"2017": "#3b82f6", "2018": "#06b6d4"},
+                text="revenue",
+            )
+            fig.update_traces(
+                texttemplate="R$%{text:,.0f}",
                 textposition="outside",
                 textfont=dict(size=10, color="#94a3b8"),
-                hovertemplate="<b>%{x}</b><br>Orders: %{y:,}<extra></extra>",
-            ))
+                marker_line_width=0,
+            )
             fig.update_layout(**chart_layout(
                 height=300,
-                title="Order Volume by Weekday",
-                xaxis_title="Day of Week",
-                yaxis_title="Orders",
+                xaxis_title="Quarter",
+                yaxis_title="Revenue (R$)",
+                yaxis_tickformat=",.0f",
+                legend=dict(orientation="h", x=0, y=1.12),
                 bargap=0.2,
+                bargroupgap=0.06,
             ))
             st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
         else:
-            _chart_error("No timing data.")
+            _chart_error("Insufficient data for YoY comparison.")
     except Exception as e:
         _chart_error(str(e))
 
