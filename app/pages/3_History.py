@@ -1,6 +1,5 @@
 """
-History page — browse past queries from logs/query_log.jsonl,
-re-run them, and export as CSV.
+History — browse all past queries from the JSONL log.
 """
 import sys
 from pathlib import Path
@@ -9,135 +8,172 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import json
 import streamlit as st
 import pandas as pd
+from app.components.styles import inject_css
 
 LOG_FILE = Path("logs") / "query_log.jsonl"
 
-st.set_page_config(page_title="History | Smart DW", page_icon="📜", layout="wide")
+st.set_page_config(page_title="History | Smart DW", layout="wide", initial_sidebar_state="expanded")
+inject_css()
 
 st.markdown("""
-<style>
-  .stApp { background-color: #0f1117; }
-  .log-row { background:#1e2336; border:1px solid #2e3456; border-radius:8px;
-             padding:12px 16px; margin-bottom:8px; }
-  .log-q { color:#e8eaf6; font-weight:600; font-size:15px; }
-  .log-meta { color:#9098b8; font-size:12px; margin-top:4px; }
-  .success-badge { color:#00e676; font-weight:700; }
-  .fail-badge { color:#ef5350; font-weight:700; }
-</style>
+<div style="animation:fadeInUp .4s ease;margin-bottom:28px;">
+    <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+                color:#475569;margin-bottom:6px;">Query Log</div>
+    <h1 style="font-size:2rem;font-weight:800;color:#f1f5f9;margin:0 0 6px;letter-spacing:-.02em;">
+        Query History
+    </h1>
+    <p style="font-size:14px;color:#64748b;margin:0;">
+        Every query is logged with its SQL, outcome, duration, and AI summary.
+    </p>
+</div>
 """, unsafe_allow_html=True)
 
-st.title("📜 Query History")
-st.caption("All past queries logged with timestamps, SQL, and outcome.")
 
-
-def _load_log() -> list[dict]:
+def _load() -> list[dict]:
     if not LOG_FILE.exists():
         return []
-    records = []
+    out = []
     with open(LOG_FILE, "r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
             if line:
                 try:
-                    records.append(json.loads(line))
+                    out.append(json.loads(line))
                 except json.JSONDecodeError:
                     pass
-    return list(reversed(records))  # newest first
+    return list(reversed(out))
 
 
-records = _load_log()
+records = _load()
 
 if not records:
-    st.info(
-        "No query history yet. Go to the **🔍 Query** page and run a question first."
-    )
+    st.markdown("""
+    <div class="empty-state" style="padding-top:80px;">
+        <div class="empty-icon-wrap">&#9632;</div>
+        <div class="empty-title">No history yet</div>
+        <div class="empty-desc">
+            Run a question on the Query page — every pipeline execution is automatically logged here.
+        </div>
+    </div>""", unsafe_allow_html=True)
     st.stop()
 
-# ── Summary stats ─────────────────────────────────────────────────────────────
-total = len(records)
+# ── Summary KPIs ──────────────────────────────────────────────────────────────
+total     = len(records)
 successes = sum(1 for r in records if r.get("success"))
-avg_dur = sum(r.get("duration_ms", 0) for r in records) / total if total else 0
+failures  = total - successes
+avg_dur   = sum(r.get("duration_ms", 0) for r in records) / total
 
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Total Queries", total)
-c2.metric("Successful", successes)
-c3.metric("Failed", total - successes)
-c4.metric("Avg Duration", f"{avg_dur / 1000:.1f}s")
+kc1, kc2, kc3, kc4 = st.columns(4)
+for col, val, lbl in [
+    (kc1, str(total),              "Total Queries"),
+    (kc2, str(successes),          "Successful"),
+    (kc3, str(failures),           "Failed"),
+    (kc4, f"{avg_dur/1000:.1f}s", "Avg Duration"),
+]:
+    col.markdown(f"""
+    <div class="kpi-card">
+        <div class="kpi-val">{val}</div>
+        <div class="kpi-lbl">{lbl}</div>
+    </div>""", unsafe_allow_html=True)
 
-st.markdown("---")
+st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
 
 # ── Filters ───────────────────────────────────────────────────────────────────
-col_f1, col_f2, col_f3 = st.columns([2, 1, 1])
-with col_f1:
-    search_term = st.text_input("🔍 Filter by keyword", placeholder="e.g. revenue, trend…")
-with col_f2:
-    show_only = st.selectbox("Status", ["All", "Success only", "Failed only"])
-with col_f3:
-    max_show = st.number_input("Show latest N", min_value=5, max_value=500, value=50, step=5)
+fc1, fc2, fc3 = st.columns([3, 1, 1])
+with fc1:
+    search = st.text_input("Search queries", placeholder="Filter by keyword, table name, or error text…",
+                           label_visibility="collapsed")
+with fc2:
+    status_filter = st.selectbox("Status", ["All", "Successful", "Failed"], label_visibility="collapsed")
+with fc3:
+    max_n = st.number_input("Show", min_value=5, max_value=500, value=50, step=10,
+                            label_visibility="collapsed")
 
-# Apply filters
 filtered = records
-if search_term:
-    kw = search_term.lower()
-    filtered = [
-        r for r in filtered
-        if kw in r.get("user_query", "").lower()
-        or kw in (r.get("sql") or "").lower()
-    ]
-if show_only == "Success only":
+if search:
+    kw = search.lower()
+    filtered = [r for r in filtered if
+                kw in r.get("user_query", "").lower() or
+                kw in (r.get("sql") or "").lower() or
+                kw in (r.get("error") or "").lower()]
+if status_filter == "Successful":
     filtered = [r for r in filtered if r.get("success")]
-elif show_only == "Failed only":
+elif status_filter == "Failed":
     filtered = [r for r in filtered if not r.get("success")]
 
-filtered = filtered[:max_show]
-st.caption(f"Showing {len(filtered)} of {total} records")
+filtered = filtered[:int(max_n)]
 
-# ── CSV export of filtered results ────────────────────────────────────────────
+st.markdown(
+    f'<p style="font-size:12px;color:#475569;margin-bottom:16px;">'
+    f'Showing {len(filtered)} of {total} records</p>',
+    unsafe_allow_html=True,
+)
+
+# ── CSV export ────────────────────────────────────────────────────────────────
 if filtered:
-    export_cols = ["timestamp", "user_query", "sql", "success", "row_count", "duration_ms", "error", "insight_summary"]
-    df_export = pd.DataFrame([{c: r.get(c, "") for c in export_cols} for r in filtered])
-    st.download_button(
-        "⬇ Export filtered results as CSV",
-        df_export.to_csv(index=False),
-        "query_history.csv",
-        "text/csv",
-    )
+    cols = ["timestamp", "user_query", "sql", "success", "row_count",
+            "duration_ms", "retry_count", "error", "insight_summary"]
+    df_export = pd.DataFrame([{c: r.get(c, "") for c in cols} for r in filtered])
+    st.download_button("Export as CSV", df_export.to_csv(index=False),
+                       "query_history.csv", "text/csv", type="secondary")
 
-st.markdown("---")
+st.markdown('<div class="fancy-divider" style="margin:12px 0 20px;"></div>', unsafe_allow_html=True)
 
-# ── Log entries ───────────────────────────────────────────────────────────────
+# ── Timeline ──────────────────────────────────────────────────────────────────
 for i, rec in enumerate(filtered):
-    ts = rec.get("timestamp", "")[:19].replace("T", " ")
-    q = rec.get("user_query", "")
-    ok = rec.get("success", False)
-    rows = rec.get("row_count", 0)
-    dur = rec.get("duration_ms", 0)
+    ts      = rec.get("timestamp", "")[:19].replace("T", " ")
+    q       = rec.get("user_query", "—")
+    ok      = rec.get("success", False)
+    rows    = rec.get("row_count", 0)
+    dur     = rec.get("duration_ms", 0)
     retries = rec.get("retry_count", 0)
-    err = rec.get("error", "")
-    sql_text = rec.get("sql") or ""
-    summary = rec.get("insight_summary", "")
+    err     = rec.get("error", "") or ""
+    sql_txt = rec.get("sql") or ""
+    summary = rec.get("insight_summary") or ""
 
-    badge = '<span class="success-badge">✅ SUCCESS</span>' if ok else '<span class="fail-badge">❌ FAILED</span>'
+    badge_cls = "badge-success" if ok else "badge-error"
+    badge_lbl = "Success" if ok else "Failed"
 
-    with st.expander(f"{ts}  ·  {q[:80]}{'…' if len(q) > 80 else ''}", expanded=False):
-        st.markdown(f"""<div class="log-row">
-            <div class="log-q">{q}</div>
-            <div class="log-meta">
-                {badge} &nbsp;|&nbsp; {rows} rows &nbsp;|&nbsp;
-                {dur / 1000:.1f}s &nbsp;|&nbsp; {retries} retries
-            </div>
-        </div>""", unsafe_allow_html=True)
+    with st.expander(
+        f"{ts}  ·  {q[:90]}{'…' if len(q) > 90 else ''}",
+        expanded=False,
+    ):
+        col_left, col_right = st.columns([3, 1])
 
-        if summary:
-            st.markdown(f"**AI Summary:** {summary}")
+        with col_left:
+            st.markdown(f"""
+            <div class="timeline-entry">
+                <div class="timeline-query">{q}</div>
+                <div class="timeline-meta">
+                    <span class="badge {badge_cls}">{badge_lbl}</span>
+                    &nbsp;
+                    <span style="color:#475569;">{rows} rows &nbsp;·&nbsp; {dur/1000:.1f}s &nbsp;·&nbsp; {retries} retries</span>
+                </div>
+            </div>""", unsafe_allow_html=True)
 
-        if sql_text:
-            st.code(sql_text, language="sql")
+            if summary:
+                st.markdown(f"""
+                <div class="glass-card" style="padding:12px 16px;margin:8px 0;">
+                    <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+                                color:#475569;margin-bottom:6px;">AI Summary</div>
+                    <div style="font-size:13px;color:#cbd5e1;line-height:1.6;">{summary}</div>
+                </div>""", unsafe_allow_html=True)
+
+        with col_right:
+            st.markdown(f"""
+            <div style="text-align:right;font-size:11px;color:#475569;padding-top:4px;">{ts}</div>
+            """, unsafe_allow_html=True)
+            if ok:
+                if st.button("Re-run", key=f"rerun_{i}", type="secondary"):
+                    st.session_state["rerun_query"] = q
+                    st.switch_page("pages/1_Query.py")
+
+        if sql_txt:
+            st.code(sql_txt, language="sql")
 
         if err:
-            st.error(f"Error: {err}")
-
-        if ok:
-            if st.button(f"▶ Re-run this query", key=f"rerun_{i}"):
-                st.session_state["rerun_query"] = q
-                st.switch_page("pages/1_Query.py")
+            st.markdown(f"""
+            <div class="glass-card" style="border-color:rgba(239,68,68,.25);padding:12px 16px;">
+                <span class="badge badge-error" style="margin-bottom:6px;">Error</span>
+                <div style="font-size:12.5px;color:#fca5a5;margin-top:6px;font-family:monospace;">{err}</div>
+            </div>""", unsafe_allow_html=True)
