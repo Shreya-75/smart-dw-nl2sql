@@ -9,14 +9,14 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 import streamlit as st
 import pandas as pd
 from sqlalchemy import text
-from app.components.styles import inject_css, CHART_LAYOUT
+from app.components.styles import inject_css
 from utils.db_connection import get_engine, test_connection
 
 st.set_page_config(
     page_title="Smart DW | Home",
     page_icon="assets/favicon.png" if Path("assets/favicon.png").exists() else None,
     layout="wide",
-    initial_sidebar_state="expanded",
+    initial_sidebar_state="collapsed",
 )
 inject_css()
 
@@ -86,21 +86,34 @@ with col_pipe:
     st.markdown('<div class="section-title">5-Agent Pipeline</div>', unsafe_allow_html=True)
 
     steps = [
-        ("1", "Query Understanding",  "Extracts intent, metric, dimension, filters, and time-grain from plain English."),
-        ("2", "NL2SQL Generation",     "Converts structured intent to a valid MySQL SELECT statement via LLM."),
-        ("3", "SQL Validation",        "Checks SELECT-only constraint, known tables, and forbidden keywords."),
-        ("4", "SQL Execution",         "Runs the validated query on MySQL; raises error on failure → triggers retry."),
-        ("5", "Insight Generation",    "Summarises the result set and returns a business recommendation."),
+        ("1", "Query Understanding",  "query_agent.py",
+         "Parses the natural-language question into a structured JSON intent containing metric, dimension, filters, and time-grain. Uses a zero-shot prompt with output schema enforcement."),
+        ("2", "NL2SQL Generation",    "sql_agent.py",
+         "Receives the intent JSON and the full database schema, then generates a syntactically valid MySQL SELECT query. Enforces ONLY_FULL_GROUP_BY rules and star-schema join patterns."),
+        ("3", "SQL Validation",       "validation_agent.py",
+         "Enforces a strict allowlist: SELECT-only, known table names, no DDL/DML keywords, no comment-based injection. Blocks any query that fails these checks before it reaches the database."),
+        ("4", "SQL Execution",        "execution_agent.py",
+         "Executes the validated query against MySQL with a configurable timeout. On failure, the error message is fed back to Agent 2 for automatic correction — up to 3 retry attempts."),
+        ("5", "Insight Generation",   "insight_agent.py",
+         "Receives the result DataFrame, summarises the key finding in plain English, and produces an actionable business recommendation tailored to the data."),
     ]
-    for num, name, desc in steps:
+    for num, name, fname, detail in steps:
         st.markdown(f"""
-        <div class="pipeline-step">
+        <details class="pipeline-detail">
+          <summary>
             <div class="step-num">{num}</div>
             <div class="step-content">
-                <div class="step-name">{name}</div>
-                <div class="step-desc">{desc}</div>
+              <div class="step-name">{name}
+                <span style="font-family:monospace;font-size:11px;color:#475569;margin-left:10px;">agents/{fname}</span>
+              </div>
+              <div class="step-desc">Click to expand</div>
             </div>
-        </div>""", unsafe_allow_html=True)
+            <span class="step-chevron">&#9660;</span>
+          </summary>
+          <div style="padding:12px 18px 16px 60px;font-size:13.5px;color:#94a3b8;line-height:1.7;border-top:1px solid rgba(255,255,255,0.05);">
+            {detail}
+          </div>
+        </details>""", unsafe_allow_html=True)
 
 with col_stack:
     st.markdown('<div class="section-title">Technology Stack</div>', unsafe_allow_html=True)

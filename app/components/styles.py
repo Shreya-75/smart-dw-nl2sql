@@ -458,6 +458,67 @@ GLOBAL_CSS = """
 footer { visibility: hidden; }
 .stDeployButton { display: none; }
 header[data-testid="stHeader"] { background: transparent; }
+
+/* ── Page transition on navigation ──────────────────────── */
+@keyframes pageEnter {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+[data-testid="stMain"] > div:first-child {
+    animation: pageEnter 0.38s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+/* ── Larger base font sizes ──────────────────────────────── */
+.stApp, .stApp p, .stApp div { font-size: 15px; }
+.stMarkdown p { font-size: 15px; color: #94a3b8; line-height: 1.7; }
+[data-testid="stSidebar"] .stMarkdown p { font-size: 14px !important; }
+[data-baseweb="select"] div { font-size: 14px !important; }
+.stTabs [data-baseweb="tab"] { font-size: 14px; font-weight: 500; }
+.streamlit-expanderHeader { font-size: 15px !important; }
+
+/* ── Expandable pipeline steps (HTML details/summary) ────── */
+details.pipeline-detail {
+    background: rgba(255,255,255,0.02);
+    border: 1px solid rgba(255,255,255,0.07);
+    border-radius: 12px;
+    margin: 8px 0;
+    overflow: hidden;
+    transition: border-color 0.2s;
+}
+details.pipeline-detail[open] {
+    border-color: rgba(59,130,246,0.3);
+    background: rgba(59,130,246,0.04);
+}
+details.pipeline-detail summary {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 18px;
+    cursor: pointer;
+    list-style: none;
+    user-select: none;
+}
+details.pipeline-detail summary::-webkit-details-marker { display: none; }
+details.pipeline-detail summary:hover { background: rgba(59,130,246,0.05); }
+details.pipeline-detail .detail-body {
+    padding: 0 18px 16px 62px;
+    animation: fadeIn 0.25s ease;
+}
+.step-chevron {
+    margin-left: auto;
+    color: #475569;
+    font-size: 12px;
+    transition: transform 0.2s ease;
+}
+details.pipeline-detail[open] .step-chevron {
+    transform: rotate(180deg);
+}
+
+/* ── Sidebar collapse button more visible ────────────────── */
+[data-testid="collapsedControl"] {
+    background: rgba(59,130,246,0.1) !important;
+    border-radius: 0 8px 8px 0 !important;
+}
 </style>
 """
 
@@ -507,3 +568,9 @@ GRADIENT_BLUE_CYAN = [[0, "#1d4ed8"], [0.5, "#2563eb"], [1.0, "#06b6d4"]]
 
 def inject_css() -> None:
     st.markdown(GLOBAL_CSS, unsafe_allow_html=True)
+
+
+def chart_layout(**overrides) -> dict:
+    """Merge CHART_LAYOUT base with chart-specific overrides. Later values win, preventing
+    'multiple values for keyword argument' errors when passing e.g. yaxis= or legend=."""
+    return {**CHART_LAYOUT, **overrides}

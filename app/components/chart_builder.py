@@ -2,7 +2,7 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from app.components.styles import CHART_LAYOUT, COLOR_SEQ, GRADIENT_BLUE_CYAN
+from app.components.styles import CHART_LAYOUT, COLOR_SEQ, GRADIENT_BLUE_CYAN, chart_layout
 
 
 def render_auto_chart(df: pd.DataFrame, query: str) -> None:
@@ -136,11 +136,10 @@ def _pie_chart(df, names, values):
         marker=dict(line=dict(color="#080d1a", width=2)),
         hovertemplate="<b>%{label}</b><br>%{value:,.0f} (%{percent})<extra></extra>",
     )
-    fig.update_layout(
-        **CHART_LAYOUT,
+    fig.update_layout(**chart_layout(
         height=380,
         legend=dict(orientation="v", x=1, y=0.5),
-    )
+    ))
     return fig
 
 

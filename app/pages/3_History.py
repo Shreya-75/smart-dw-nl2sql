@@ -12,7 +12,7 @@ from app.components.styles import inject_css
 
 LOG_FILE = Path("logs") / "query_log.jsonl"
 
-st.set_page_config(page_title="History | Smart DW", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="History | Smart DW", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
 
 st.markdown("""

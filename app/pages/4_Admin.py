@@ -15,7 +15,7 @@ from utils.llm_client import get_active_provider
 from app.components.styles import inject_css
 import config
 
-st.set_page_config(page_title="Admin | Smart DW", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Admin | Smart DW", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
 
 LOG_FILE = Path("logs") / "query_log.jsonl"

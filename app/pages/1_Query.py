@@ -14,7 +14,7 @@ from app.components.chart_builder import render_auto_chart
 from app.components.insight_display import render_insights
 from app.components.styles import inject_css
 
-st.set_page_config(page_title="Query | Smart DW", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Query | Smart DW", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
 
 # ── Sidebar: LLM selector ─────────────────────────────────────────────────────

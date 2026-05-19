@@ -16,9 +16,9 @@ import plotly.graph_objects as go
 from sqlalchemy import text
 
 from utils.db_connection import get_engine, test_connection
-from app.components.styles import inject_css, CHART_LAYOUT, COLOR_SEQ, GRADIENT_BLUE_CYAN
+from app.components.styles import inject_css, CHART_LAYOUT, COLOR_SEQ, GRADIENT_BLUE_CYAN, chart_layout
 
-st.set_page_config(page_title="Dashboard | Smart DW", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Dashboard | Smart DW", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
 
 st.markdown("""
@@ -126,17 +126,15 @@ try:
             yaxis="y2",
             hovertemplate="<b>%{x}</b><br>Orders: %{y:,.0f}<extra></extra>",
         ))
-        fig.update_layout(
-            **CHART_LAYOUT,
+        fig.update_layout(**chart_layout(
             height=340,
             title="Monthly Revenue (R$) and Order Volume",
-            yaxis=dict(title="Revenue (R$)", gridcolor="rgba(255,255,255,0.05)",
-                       tickformat=",.0f"),
+            yaxis=dict(title="Revenue (R$)", gridcolor="rgba(255,255,255,0.05)", tickformat=",.0f"),
             yaxis2=dict(title="Orders", overlaying="y", side="right",
                         showgrid=False, tickfont=dict(color="#06b6d4")),
             legend=dict(orientation="h", x=0, y=1.08),
             xaxis_tickangle=-30,
-        )
+        ))
         st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
     else:
         _chart_error("No delivered orders found. Run the ETL first.")
@@ -177,11 +175,11 @@ with col_state:
                 marker_line_width=0,
             )
             fig.update_coloraxes(showscale=False)
-            fig.update_layout(
-                **CHART_LAYOUT, height=340,
+            fig.update_layout(**chart_layout(
+                height=340,
                 xaxis_title="State", yaxis_title="Revenue (R$)",
                 yaxis_tickformat=",.0f",
-            )
+            ))
             st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
         else:
             _chart_error("No data.")
@@ -219,12 +217,12 @@ with col_cat:
                 marker_line_width=0,
             )
             fig.update_coloraxes(showscale=False)
-            fig.update_layout(
-                **CHART_LAYOUT, height=360,
+            fig.update_layout(**chart_layout(
+                height=360,
                 xaxis_title="Revenue (R$)", yaxis_title=None,
                 yaxis_tickfont=dict(size=11),
                 xaxis_tickformat=",.0f",
-            )
+            ))
             st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
         else:
             _chart_error("No data.")
@@ -261,8 +259,8 @@ with col_pay:
                 marker=dict(line=dict(color="#080d1a", width=2.5)),
                 hovertemplate="<b>%{label}</b><br>R$ %{value:,.0f}<br>%{percent}<extra></extra>",
             )
-            fig.update_layout(**CHART_LAYOUT, height=340,
-                              legend=dict(orientation="h", x=0.1, y=-0.15))
+            fig.update_layout(**chart_layout(height=340,
+                                           legend=dict(orientation="h", x=0.1, y=-0.15)))
             st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
         else:
             _chart_error("No data.")
@@ -311,7 +309,7 @@ with col_gauge:
                 },
             },
         ))
-        fig.update_layout(**CHART_LAYOUT, height=320, margin=dict(l=20, r=20, t=60, b=20))
+        fig.update_layout(**chart_layout(height=320, margin=dict(l=20, r=20, t=60, b=20)))
         st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
     except Exception as e:
         _chart_error(str(e))
@@ -342,14 +340,13 @@ try:
             ),
             hovertemplate="<b>%{x} days</b><br>Orders: %{y:,}<extra></extra>",
         ))
-        fig.update_layout(
-            **CHART_LAYOUT,
+        fig.update_layout(**chart_layout(
             height=300,
             title="Orders by Delivery Days (delivered, ≤ 60 days)",
             xaxis_title="Days to Deliver",
             yaxis_title="Orders",
             bargap=0.05,
-        )
+        ))
         st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
     else:
         _chart_error("No delivery data.")
@@ -391,12 +388,12 @@ try:
             hovertemplate="<b>%{text}</b><br>Avg Review: %{x:.2f}<br>Revenue: R$ %{y:,.0f}<extra></extra>",
         )
         fig.update_coloraxes(showscale=False)
-        fig.update_layout(
-            **CHART_LAYOUT, height=360,
+        fig.update_layout(**chart_layout(
+            height=360,
             xaxis_title="Average Review Score",
             yaxis_title="Total Revenue (R$)",
             yaxis_tickformat=",.0f",
-        )
+        ))
         st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
     else:
         _chart_error("Insufficient seller data.")
