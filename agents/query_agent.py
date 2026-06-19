@@ -25,15 +25,21 @@ Available tables: fact_sales, dim_customers, dim_products, dim_sellers, dim_time
 """
 
 
-def understand_query(user_query: str, context: str = "") -> dict:
+def understand_query(
+    user_query: str,
+    context: str = "",
+    conversation_history: str = "",
+) -> dict:
     """Parse natural-language query into structured intent JSON.
 
-    context: optional clarification injected when the pipeline re-runs Agent 1
-             after an incomplete intent or a reflection recommendation.
+    context:              clarification injected on re-runs (reflection or incomplete intent).
+    conversation_history: prior turns rendered by conversation.build_context_string().
     """
     logger.debug(f"Agent 1 input: {user_query}" + (f" [ctx: {context[:60]}]" if context else ""))
 
     user_msg = user_query
+    if conversation_history:
+        user_msg = conversation_history + "\n\nCurrent question: " + user_query
     if context:
         user_msg += f"\n\n[Re-analysis guidance: {context}]"
 

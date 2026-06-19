@@ -66,7 +66,11 @@ class PipelineResult:
     agent_trace:   list                       = field(default_factory=list)
 
 
-def run_pipeline(user_query: str, on_progress: ProgressFn = None) -> PipelineResult:
+def run_pipeline(
+    user_query: str,
+    on_progress: ProgressFn = None,
+    conversation_history: str = "",
+) -> PipelineResult:
     result = PipelineResult(user_query=user_query)
     start  = time.time()
 
@@ -83,7 +87,7 @@ def run_pipeline(user_query: str, on_progress: ProgressFn = None) -> PipelineRes
         # ────────────────────────────────────────────────────────────────────
         emit(1, "start",  "Parsing natural-language intent…")
         logger.info(f"[Agent 1] Understanding: {user_query!r}")
-        result.intent = understand_query(user_query)
+        result.intent = understand_query(user_query, conversation_history=conversation_history)
         emit(1, "done",   "Intent extracted", intent=result.intent)
 
         # Self-check: if both metric and dimension are absent, re-run Agent 1
@@ -94,6 +98,7 @@ def run_pipeline(user_query: str, on_progress: ProgressFn = None) -> PipelineRes
             logger.warning("[Agent 1] Intent incomplete — clarification pass")
             result.intent = understand_query(
                 user_query,
+                conversation_history=conversation_history,
                 context=(
                     "Re-analyse the question and explicitly identify: "
                     "(1) the numeric metric being requested and "
@@ -162,6 +167,7 @@ def run_pipeline(user_query: str, on_progress: ProgressFn = None) -> PipelineRes
                         result.intent = understand_query(
                             user_query,
                             context=reflection.get("fix_instruction", ""),
+                            conversation_history=conversation_history,
                         )
                         emit(1, "done", "Query intent revised", intent=result.intent)
                 else:

@@ -684,6 +684,92 @@ with col_inst:
     except Exception as e:
         _chart_error(str(e))
 
+st.markdown('<div class="fancy-divider" style="margin:28px 0 20px;"></div>', unsafe_allow_html=True)
+
+# ── Customer Intelligence — RFM Segmentation ─────────────────────────────────
+st.markdown('<div class="section-title">Customer Intelligence — RFM Segmentation</div>',
+            unsafe_allow_html=True)
+st.markdown("""
+<p style="font-size:13px;color:#64748b;margin:-4px 0 18px;">
+    Recency · Frequency · Monetary — KMeans clustering (k=4) on all delivered orders.
+</p>""", unsafe_allow_html=True)
+
+@st.cache_data(ttl=300)
+def _load_rfm():
+    try:
+        from analytics.rfm import compute_rfm
+        return compute_rfm()
+    except Exception as exc:
+        return None
+
+rfm = _load_rfm()
+if rfm is None:
+    st.markdown("""<div class="glass-card" style="padding:16px;">
+        <span style="color:#475569;font-size:13px;">RFM data unavailable — check DB connection.</span>
+    </div>""", unsafe_allow_html=True)
+else:
+    # ── KPI pills ─────────────────────────────────────────────────────────────
+    rfm_k1, rfm_k2, rfm_k3, rfm_k4 = st.columns(4)
+    for col, seg_row in zip([rfm_k1, rfm_k2, rfm_k3, rfm_k4],
+                             rfm.summary.itertuples()):
+        pct = seg_row.customers / rfm.total_customers * 100
+        col.markdown(f"""
+        <div class="glass-card" style="padding:14px 16px;border-left:3px solid {seg_row.seg_color};">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+                        color:{seg_row.seg_color};margin-bottom:6px;">{seg_row.segment}</div>
+            <div style="font-size:22px;font-weight:800;color:#f1f5f9;">{seg_row.customers:,}</div>
+            <div style="font-size:11px;color:#475569;margin-top:2px;">
+                {pct:.0f}% of customers &nbsp;·&nbsp; {seg_row.revenue_share:.0f}% revenue
+            </div>
+        </div>""", unsafe_allow_html=True)
+
+    rfm_col1, rfm_col2 = st.columns([3, 2], gap="large")
+
+    with rfm_col1:
+        # Scatter: Recency vs Monetary, colour = segment
+        sample = rfm.customers.sample(min(2000, len(rfm.customers)), random_state=42)
+        seg_colors = rfm.customers[["segment","seg_color"]].drop_duplicates()
+        color_map  = dict(zip(seg_colors["segment"], seg_colors["seg_color"]))
+        fig_sc = px.scatter(
+            sample, x="recency_days", y="monetary",
+            color="segment", color_discrete_map=color_map,
+            size="rfm_score", size_max=14, opacity=0.65,
+            title="Customer Landscape — Recency vs Spend",
+            labels={"recency_days": "Days Since Last Order (↓ better)",
+                    "monetary": "Total Spend R$ (↑ better)"},
+            hover_data={"rfm_score": True, "frequency": True},
+        )
+        fig_sc.update_traces(marker=dict(line=dict(width=0.5, color="rgba(0,0,0,0.2)")))
+        fig_sc.update_layout(**chart_layout(
+            height=340, legend=dict(orientation="h", x=0, y=-0.22),
+        ))
+        st.plotly_chart(fig_sc, use_container_width=True, config={"displaylogo": False})
+
+    with rfm_col2:
+        # Donut: revenue share by segment
+        fig_dn = px.pie(
+            rfm.summary, names="segment", values="total_revenue",
+            hole=0.42, title="Revenue Share by Segment",
+            color="segment", color_discrete_map=color_map,
+        )
+        fig_dn.update_traces(
+            textfont=dict(size=11, color="#f1f5f9"),
+            marker=dict(line=dict(color="#080d1a", width=2)),
+            hovertemplate="<b>%{label}</b><br>R$ %{value:,.0f} (%{percent})<extra></extra>",
+        )
+        fig_dn.update_layout(**chart_layout(
+            height=340, legend=dict(orientation="h", x=0.05, y=-0.22),
+        ))
+        st.plotly_chart(fig_dn, use_container_width=True, config={"displaylogo": False})
+
+    # Segment detail table
+    with st.expander("Segment detail table"):
+        disp = rfm.summary[["segment","customers","revenue_share","avg_recency",
+                             "avg_frequency","avg_monetary"]].copy()
+        disp.columns = ["Segment","Customers","Revenue %","Avg Days Since Order",
+                        "Avg Orders","Avg Spend R$"]
+        st.dataframe(disp.set_index("Segment"), use_container_width=True)
+
 st.markdown('<div class="fancy-divider" style="margin:20px 0;"></div>', unsafe_allow_html=True)
 
 # ── Dataset Context Visual Strip ──────────────────────────────────────────────

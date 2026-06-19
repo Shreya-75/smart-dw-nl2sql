@@ -6,6 +6,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import time
+import pandas as pd
 import streamlit as st
 
 from agents.pipeline import run_pipeline
@@ -13,6 +14,12 @@ from utils.llm_client import set_provider, get_active_provider
 from app.components.chart_builder import render_auto_chart
 from app.components.insight_display import render_insights
 from app.components.styles import inject_css
+from app.components.conversation import (
+    add_turn, clear_history, build_context_string, render_history_thread
+)
+from utils.report_generator import generate_report
+from utils.confidence import compute_confidence, confidence_badge
+from utils.query_cache import lookup as cache_lookup, store as cache_store, warm_cache
 
 st.set_page_config(page_title="Query | Smart DW", layout="wide", initial_sidebar_state="collapsed")
 inject_css()
@@ -44,6 +51,22 @@ with st.sidebar:
 
     st.markdown("""
     <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+                color:#475569;padding:2px 0 8px;">Benchmarking</div>
+    """, unsafe_allow_html=True)
+    benchmark_mode = st.toggle(
+        "Compare providers",
+        value=False,
+        help="Run the same query through Ollama and Groq simultaneously and compare results.",
+    )
+
+    if st.button("Clear conversation", use_container_width=True, type="secondary"):
+        clear_history()
+        st.rerun()
+
+    st.markdown('<div class="fancy-divider" style="margin:16px 0;"></div>', unsafe_allow_html=True)
+
+    st.markdown("""
+    <div style="font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
                 color:#475569;padding:4px 0 10px;">Sample Questions</div>
     """, unsafe_allow_html=True)
 
@@ -58,6 +81,12 @@ with st.sidebar:
         "Compare revenue across different payment types",
     ]
     chosen = st.selectbox("Load a sample", ["— select —"] + examples, label_visibility="collapsed")
+
+# ── Warm semantic cache once per session ─────────────────────────────────────
+if "cache_warmed" not in st.session_state:
+    n = warm_cache()
+    st.session_state.cache_warmed = True
+    st.session_state.cache_size   = n
 
 # ── Rate limit (10 queries / min) ─────────────────────────────────────────────
 if "query_ts" not in st.session_state:
@@ -85,6 +114,81 @@ st.markdown("""
     </p>
 </div>
 """, unsafe_allow_html=True)
+
+# ── Conversation thread ───────────────────────────────────────────────────────
+render_history_thread()
+
+# ── Voice Input ───────────────────────────────────────────────────────────────
+VOICE_HTML = """
+<div id="voice-wrap" style="margin-bottom:10px;display:flex;align-items:center;gap:12px;">
+  <button id="voice-btn" onclick="toggleVoice()" title="Voice input"
+    style="background:rgba(59,130,246,0.12);border:1px solid rgba(59,130,246,0.35);
+           color:#60a5fa;border-radius:10px;padding:7px 16px;font-size:12px;
+           font-weight:600;letter-spacing:.04em;cursor:pointer;transition:all .2s;
+           font-family:Inter,sans-serif;">
+    🎙 Start voice input
+  </button>
+  <span id="voice-status" style="font-size:12px;color:#475569;"></span>
+  <span id="voice-result-label"
+    style="font-size:12px;color:#94a3b8;font-style:italic;max-width:480px;
+           white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"></span>
+  <button id="copy-btn" onclick="copyResult()" title="Copy to clipboard"
+    style="display:none;background:rgba(16,185,129,0.12);border:1px solid rgba(16,185,129,0.35);
+           color:#10b981;border-radius:8px;padding:5px 12px;font-size:11px;
+           font-weight:600;cursor:pointer;font-family:Inter,sans-serif;">Copy</button>
+</div>
+<script>
+let recognizing = false, rec = null, lastTranscript = "";
+function toggleVoice() {
+  if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+    document.getElementById('voice-status').innerText =
+      "Speech recognition not supported in this browser. Try Chrome.";
+    return;
+  }
+  if (recognizing) { rec.stop(); return; }
+  const SRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+  rec = new SRec();
+  rec.lang = "en-US"; rec.interimResults = true; rec.maxAlternatives = 1;
+  const btn = document.getElementById('voice-btn');
+  const status = document.getElementById('voice-status');
+  const label  = document.getElementById('voice-result-label');
+  const cpBtn  = document.getElementById('copy-btn');
+  rec.onstart  = () => {
+    recognizing = true;
+    btn.innerText = "⏹ Stop recording";
+    btn.style.borderColor = "rgba(239,68,68,0.5)";
+    btn.style.color = "#ef4444";
+    status.innerText = "Listening…";
+  };
+  rec.onerror  = (e) => { status.innerText = "Error: " + e.error; recognizing = false; };
+  rec.onend    = () => {
+    recognizing = false;
+    btn.innerText = "🎙 Start voice input";
+    btn.style.borderColor = "rgba(59,130,246,0.35)";
+    btn.style.color = "#60a5fa";
+    status.innerText = lastTranscript ? "Transcription ready — click Copy then paste." : "";
+  };
+  rec.onresult = (e) => {
+    let interim = "", final = "";
+    for (let i = e.resultIndex; i < e.results.length; i++) {
+      if (e.results[i].isFinal) final += e.results[i][0].transcript;
+      else interim += e.results[i][0].transcript;
+    }
+    if (final) { lastTranscript = final; label.innerText = '"' + final + '"'; cpBtn.style.display="inline"; }
+    else { label.innerText = interim; }
+  };
+  rec.start();
+}
+function copyResult() {
+  if (!lastTranscript) return;
+  navigator.clipboard.writeText(lastTranscript).then(() => {
+    document.getElementById('voice-status').innerText = "Copied! Paste into the query box below.";
+  });
+}
+</script>
+"""
+import streamlit.components.v1 as _components
+_components.html(VOICE_HTML, height=52)
 
 # ── Input area ────────────────────────────────────────────────────────────────
 user_query = st.text_area(
@@ -129,8 +233,100 @@ if run_btn:
             </div>
         </div>""", unsafe_allow_html=True)
 
-        with st.spinner(""):
-            result = run_pipeline(q)
+        # ── Benchmark mode: run both providers in parallel ────────────────────
+        if benchmark_mode:
+            import threading
+            bench_results: dict = {}
+
+            def _run_provider(prov: str, mdl: str) -> None:
+                from utils.llm_client import set_provider as _sp
+                _sp(prov, mdl)
+                t0 = time.time()
+                r  = run_pipeline(q, conversation_history=build_context_string())
+                bench_results[prov] = {"result": r, "elapsed": time.time() - t0}
+
+            ollama_model = model if provider == "ollama" else "llama3"
+            groq_model   = model if provider == "groq"   else "llama3-70b-8192"
+
+            t_ollama = threading.Thread(target=_run_provider, args=("ollama", ollama_model))
+            t_groq   = threading.Thread(target=_run_provider, args=("groq",   groq_model))
+            progress_ph.markdown("""
+            <div class="glass-card" style="padding:14px 18px;">
+                <span class="pulse-dot dot-amber"></span>
+                <span style="font-size:13px;color:#94a3b8;margin-left:8px;">
+                    Running Ollama and Groq in parallel…
+                </span>
+            </div>""", unsafe_allow_html=True)
+            t_ollama.start(); t_groq.start()
+            t_ollama.join();  t_groq.join()
+            progress_ph.empty()
+
+            col_a, col_b = st.columns(2, gap="large")
+            for col, prov_key, prov_lbl, clr in [
+                (col_a, "ollama", "Ollama (local)", "#3b82f6"),
+                (col_b, "groq",   "Groq (cloud)",   "#06b6d4"),
+            ]:
+                entry = bench_results.get(prov_key, {})
+                r     = entry.get("result")
+                el    = entry.get("elapsed", 0)
+                with col:
+                    st.markdown(f"""
+                    <div style="font-size:11px;font-weight:700;letter-spacing:.08em;
+                                text-transform:uppercase;color:{clr};margin-bottom:8px;">
+                        {prov_lbl} — {el:.1f}s
+                    </div>""", unsafe_allow_html=True)
+                    if r and r.success:
+                        st.markdown(f'<span class="badge badge-success">Success · {len(r.data) if r.data is not None else 0} rows</span>',
+                                    unsafe_allow_html=True)
+                        st.code(r.sql or "", language="sql")
+                        if r.data is not None and not r.data.empty:
+                            st.dataframe(r.data.head(10), use_container_width=True, hide_index=True)
+                        if r.insights:
+                            st.markdown(f"""
+                            <div class="insight-box insight-box-blue" style="margin-top:10px;">
+                                <div class="insight-label">Summary</div>
+                                <div class="insight-text">{r.insights.get('summary','')}</div>
+                            </div>""", unsafe_allow_html=True)
+                    else:
+                        st.markdown(f'<span class="badge badge-error">Failed</span>',
+                                    unsafe_allow_html=True)
+                        if r:
+                            st.caption(r.error_message)
+            # Reset to selected provider for future runs
+            set_provider(provider, model)
+            st.stop()
+
+        # ── Semantic cache check ──────────────────────────────────────────────
+        cache_hit = cache_lookup(q)
+        if cache_hit:
+            sim_pct = int(cache_hit["similarity"] * 100)
+            st.markdown(f"""
+            <div class="glass-card" style="padding:10px 16px;margin-bottom:10px;
+                         border-color:rgba(6,182,212,.35);">
+                <span class="badge badge-success">From cache</span>
+                <span style="font-size:12px;color:#64748b;margin-left:8px;">
+                    {sim_pct}% semantic match to: <em>"{cache_hit['query'][:72]}"</em>
+                </span>
+            </div>""", unsafe_allow_html=True)
+            progress_ph.empty()
+            # Reconstruct a minimal result from cache
+            _rows = cache_hit.get("rows", [])
+            _data = pd.DataFrame(_rows) if _rows else pd.DataFrame()
+            class _FakeResult:
+                success       = True
+                sql           = cache_hit.get("sql", "")
+                data          = _data
+                insights      = cache_hit.get("insights", {})
+                intent        = {}
+                validation    = None
+                error_message = ""
+                duration_ms   = 0
+                retry_count   = 0
+                agent_trace   = []
+            result = _FakeResult()
+        else:
+            with st.spinner(""):
+                result = run_pipeline(q, conversation_history=build_context_string())
 
         progress_ph.empty()
 
@@ -191,9 +387,11 @@ if run_btn:
                 st.code(result.sql, language="sql")
         else:
             # ── Result metadata strip ─────────────────────────────────────────
-            row_cnt  = len(result.data) if result.data is not None else 0
-            dur_s    = result.duration_ms / 1000
-            retry    = result.retry_count
+            row_cnt    = len(result.data) if result.data is not None else 0
+            dur_s      = result.duration_ms / 1000
+            retry      = result.retry_count
+            conf_score = compute_confidence(result)
+            conf_cls, conf_lbl = confidence_badge(conf_score)
 
             st.markdown(f"""
             <div class="result-meta">
@@ -213,7 +411,8 @@ if run_btn:
                     <span class="result-meta-val">{active_p}</span>
                     <span class="result-meta-lbl">Provider</span>
                 </div>
-                <div style="margin-left:auto;">
+                <div style="margin-left:auto;display:flex;gap:8px;align-items:center;">
+                    <span class="badge {conf_cls}">{conf_lbl}</span>
                     <span class="badge badge-success">Success</span>
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -310,3 +509,45 @@ if run_btn:
             if result.insights:
                 st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
                 render_insights(result.insights)
+
+            # ── PDF Report download ───────────────────────────────────────────
+            st.markdown('<div class="fancy-divider"></div>', unsafe_allow_html=True)
+            if st.button("Generate PDF Report", type="secondary", use_container_width=False):
+                with st.spinner("Building report…"):
+                    try:
+                        pdf_bytes = generate_report(
+                            query=q,
+                            sql=result.sql or "",
+                            insights=result.insights or {},
+                            row_count=row_cnt,
+                            duration_ms=result.duration_ms,
+                            provider=active_p,
+                            retry_count=result.retry_count,
+                            confidence=conf_score,
+                        )
+                        st.download_button(
+                            "Download PDF",
+                            data=pdf_bytes,
+                            file_name="smart_dw_report.pdf",
+                            mime="application/pdf",
+                            type="primary",
+                        )
+                    except Exception as e:
+                        st.error(f"PDF generation failed: {e}")
+
+            # ── Store in semantic cache (only fresh pipeline runs) ────────────
+            if not cache_hit and result.success and result.sql and result.data is not None:
+                cache_store(
+                    query=q,
+                    sql=result.sql,
+                    rows=result.data.head(50).to_dict(orient="records"),
+                    insights=result.insights or {},
+                )
+
+            # ── Save to conversation history ───────────────────────────────────
+            add_turn(
+                query=q,
+                intent=result.intent or {},
+                data=result.data,
+                key_finding=result.insights.get("key_finding", "") if result.insights else "",
+            )

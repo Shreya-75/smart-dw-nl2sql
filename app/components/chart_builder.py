@@ -16,6 +16,22 @@ import plotly.express as px
 import plotly.graph_objects as go
 from app.components.styles import COLOR_SEQ, GRADIENT_BLUE_CYAN, chart_layout
 
+# ── Brazil state centroids (lat, lon) — used for scatter_geo bubble map ──────
+_BR_STATE_CENTERS: dict[str, tuple[float, float]] = {
+    "AC": (-9.02, -70.81), "AL": (-9.71, -35.73), "AM": (-3.47, -65.10),
+    "AP": (1.41,  -51.77), "BA": (-12.96,-38.51), "CE": (-3.72, -38.54),
+    "DF": (-15.78,-47.93), "ES": (-19.19,-40.34), "GO": (-15.98,-49.86),
+    "MA": (-2.55, -44.30), "MG": (-18.10,-44.38), "MS": (-20.51,-54.54),
+    "MT": (-12.64,-55.42), "PA": (-5.53, -52.29), "PB": (-7.06, -35.55),
+    "PE": (-8.28, -35.07), "PI": (-6.60, -42.28), "PR": (-24.89,-51.55),
+    "RJ": (-22.84,-43.15), "RN": (-5.81, -36.59), "RO": (-11.22,-62.80),
+    "RR": (1.99,  -61.33), "RS": (-30.07,-53.26), "SC": (-27.45,-50.95),
+    "SE": (-10.57,-37.45), "SP": (-22.25,-48.85), "TO": (-10.18,-48.33),
+}
+
+# Column names that indicate a Brazilian state code column
+_STATE_COLS = {"customer_state", "seller_state", "state", "uf"}
+
 # ── Semantic hint groups ──────────────────────────────────────────────────────
 _TIME_COLS   = {"year", "month", "date", "week", "quarter", "period", "label", "time"}
 _MONEY_PREF  = ("revenue", "value", "payment", "price", "amount", "total", "sales", "profit")
@@ -49,28 +65,83 @@ def _fmt(col: str) -> str:
 # ── Chart renderers ───────────────────────────────────────────────────────────
 
 def _render_line(df: pd.DataFrame, x: str, num_cols: list) -> None:
-    """Time-series: line + area fill, dual y-axis for second metric."""
+    """Time-series: line + area fill, optional 6-period forecast overlay."""
     y1 = _pick_y(num_cols)
     other = [c for c in num_cols if c != y1]
     y2 = other[0] if other else None
 
+    # ── Forecast toggle (only shown when there are ≥ 6 data points) ──────────
+    show_forecast = False
+    if len(df) >= 6:
+        show_forecast = st.toggle("Show 6-period forecast", value=False, key=f"fc_{x}_{y1}")
+
+    plot_df = df.copy()
+    fc_result = None
+
+    if show_forecast:
+        try:
+            from analytics.forecasting import forecast_series
+            fc_result = forecast_series(df, x, y1, n_periods=6)
+            if fc_result:
+                plot_df = fc_result.df
+        except Exception:
+            pass
+
     fig = go.Figure()
-    fig.add_trace(go.Scatter(
-        x=df[x].astype(str), y=df[y1],
-        mode="lines+markers", name=_fmt(y1),
-        line=dict(color="#3b82f6", width=2.5),
-        marker=dict(size=6, color="#3b82f6", line=dict(width=2, color="#080d1a")),
-        fill="tozeroy", fillcolor="rgba(59,130,246,0.08)",
-        hovertemplate=f"<b>%{{x}}</b><br>{_fmt(y1)}: %{{y:,.2f}}<extra></extra>",
-    ))
+
+    if fc_result:
+        actuals  = plot_df[~plot_df["is_forecast"]]
+        forecast = plot_df[plot_df["is_forecast"]]
+
+        fig.add_trace(go.Scatter(
+            x=actuals[x].astype(str), y=actuals[y1],
+            mode="lines+markers", name=_fmt(y1),
+            line=dict(color="#3b82f6", width=2.5),
+            marker=dict(size=6, color="#3b82f6", line=dict(width=2, color="#080d1a")),
+            fill="tozeroy", fillcolor="rgba(59,130,246,0.08)",
+            hovertemplate=f"<b>%{{x}}</b><br>{_fmt(y1)}: %{{y:,.2f}}<extra></extra>",
+        ))
+        # Confidence band
+        fig.add_trace(go.Scatter(
+            x=pd.concat([forecast[x], forecast[x].iloc[::-1]]).astype(str),
+            y=pd.concat([forecast["forecast_hi"], forecast["forecast_low"].iloc[::-1]]),
+            fill="toself", fillcolor="rgba(6,182,212,0.10)",
+            line=dict(color="rgba(0,0,0,0)"), showlegend=False, hoverinfo="skip",
+        ))
+        fig.add_trace(go.Scatter(
+            x=forecast[x].astype(str), y=forecast[y1],
+            mode="lines+markers", name="Forecast",
+            line=dict(color="#06b6d4", width=2, dash="dash"),
+            marker=dict(size=5, color="#06b6d4"),
+            hovertemplate=f"<b>%{{x}}</b><br>Forecast: %{{y:,.2f}}<extra></extra>",
+        ))
+        arrow = "↑" if fc_result.pct_change >= 0 else "↓"
+        clr   = "#10b981" if fc_result.pct_change >= 0 else "#ef4444"
+        st.markdown(
+            f'<p style="font-size:12px;color:{clr};margin:4px 0 8px;">'
+            f'{arrow} Model predicts <strong>{_fmt(y1)}</strong> of '
+            f'<strong>{fc_result.next_value:,.0f}</strong> in {fc_result.next_label} '
+            f'({fc_result.pct_change:+.1%} vs last actual) '
+            f'<span style="color:#475569;">· R²={fc_result.r2:.2f}</span></p>',
+            unsafe_allow_html=True,
+        )
+    else:
+        fig.add_trace(go.Scatter(
+            x=plot_df[x].astype(str), y=plot_df[y1],
+            mode="lines+markers", name=_fmt(y1),
+            line=dict(color="#3b82f6", width=2.5),
+            marker=dict(size=6, color="#3b82f6", line=dict(width=2, color="#080d1a")),
+            fill="tozeroy", fillcolor="rgba(59,130,246,0.08)",
+            hovertemplate=f"<b>%{{x}}</b><br>{_fmt(y1)}: %{{y:,.2f}}<extra></extra>",
+        ))
 
     extra = dict(
         height=400,
-        title=f"{_fmt(y1)} Over Time",
-        xaxis_tickangle=-30 if df[x].nunique() > 6 else 0,
+        title=f"{_fmt(y1)} Over Time" + (" + 6-Period Forecast" if show_forecast else ""),
+        xaxis_tickangle=-30 if plot_df[x].nunique() > 6 else 0,
         yaxis=dict(title=_fmt(y1), gridcolor="rgba(255,255,255,0.05)", tickformat=",.0f"),
     )
-    if y2:
+    if y2 and not fc_result:
         fig.add_trace(go.Bar(
             x=df[x].astype(str), y=df[y2], name=_fmt(y2),
             marker_color="rgba(6,182,212,0.22)", yaxis="y2",
@@ -149,6 +220,47 @@ def _render_donut(df: pd.DataFrame, names: str, values: str) -> None:
     st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
 
 
+def _render_bubble_map(df: pd.DataFrame, state_col: str, val_col: str) -> None:
+    """Brazil bubble map — bubble radius ∝ metric value, one per state."""
+    df = df.copy()
+    df[state_col] = df[state_col].astype(str).str.upper().str.strip()
+    df["_lat"] = df[state_col].map(lambda s: _BR_STATE_CENTERS.get(s, (None, None))[0])
+    df["_lon"] = df[state_col].map(lambda s: _BR_STATE_CENTERS.get(s, (None, None))[1])
+    df = df.dropna(subset=["_lat", "_lon"])
+    if df.empty:
+        _render_no_chart("No Brazil state codes recognised.",
+                         "Ensure column contains 2-letter state codes (SP, RJ, MG…).")
+        return
+
+    fig = px.scatter_geo(
+        df, lat="_lat", lon="_lon",
+        size=val_col, color=val_col,
+        hover_name=state_col,
+        hover_data={val_col: ":,.0f", "_lat": False, "_lon": False},
+        color_continuous_scale=GRADIENT_BLUE_CYAN,
+        size_max=55,
+        scope="south america",
+        title=f"{_fmt(val_col)} by State — Brazil",
+    )
+    fig.update_geos(
+        showframe=False, showcoastlines=True,
+        coastlinecolor="rgba(99,102,241,0.3)",
+        showland=True, landcolor="#0f172a",
+        showocean=True, oceancolor="#080d1a",
+        showlakes=False,
+        showcountries=True, countrycolor="rgba(99,102,241,0.2)",
+        lataxis_range=[-35, 6], lonaxis_range=[-75, -28],
+    )
+    fig.update_layout(**chart_layout(
+        height=480,
+        coloraxis_colorbar=dict(
+            title=_fmt(val_col), tickfont=dict(size=10, color="#94a3b8"),
+            title_font=dict(color="#94a3b8"),
+        ),
+    ))
+    st.plotly_chart(fig, use_container_width=True, config={"displaylogo": False})
+
+
 def _render_scatter(df: pd.DataFrame, x: str, y: str, color_col) -> None:
     """Scatter — for two-metric correlation (e.g. review score vs revenue)."""
     fig = px.scatter(
@@ -207,6 +319,12 @@ def render_auto_chart(df: pd.DataFrame, query: str) -> None:
 
     is_ranking = any(kw in q for kw in _RANK_QUERY)
     is_dist    = any(kw in q for kw in _DIST_QUERY) and not is_ranking
+
+    # ── 0. Brazil state map ───────────────────────────────────────────────────
+    state_col = next((c for c in df.columns if c.lower() in _STATE_COLS), None)
+    if state_col and num_cols:
+        _render_bubble_map(df, state_col, _pick_y(num_cols))
+        return
 
     # ── 1. Time-series ────────────────────────────────────────────────────────
     time_col = next((c for c in df.columns if _is_time_col(c)), None)
