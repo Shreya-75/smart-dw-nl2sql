@@ -120,12 +120,12 @@ if run_btn:
 
         progress_ph = st.empty()
         progress_ph.markdown("""
-        <div class="glass-card" style="padding:18px 20px;">
-            <div style="font-size:12px;font-weight:600;color:#60a5fa;margin-bottom:10px;
-                        letter-spacing:.05em;">Running pipeline…</div>
+        <div class="glass-card" style="padding:16px 20px;">
+            <div style="font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+                        color:#475569;margin-bottom:10px;">Agentic Pipeline</div>
             <div style="display:flex;gap:8px;align-items:center;">
                 <span class="pulse-dot dot-amber"></span>
-                <span style="font-size:13px;color:#94a3b8;">Agent 1 → understanding query intent</span>
+                <span style="font-size:13px;color:#94a3b8;">Initialising agents…</span>
             </div>
         </div>""", unsafe_allow_html=True)
 
@@ -133,6 +133,51 @@ if run_btn:
             result = run_pipeline(q)
 
         progress_ph.empty()
+
+        # ── Agent trace: show every decision made by the pipeline ─────────────
+        if result.agent_trace:
+            _AGENT_COLORS = {
+                1: ("#3b82f6", "#1e3a8a"),
+                2: ("#06b6d4", "#0e4f5e"),
+                3: ("#8b5cf6", "#2e1065"),
+                4: ("#10b981", "#064e3b"),
+                5: ("#f59e0b", "#451a03"),
+                "R": ("#ef4444", "#450a0a"),
+            }
+            _ACTION_ICONS = {
+                "done": "&#10003;", "failed": "&#10007;", "empty_result": "&#9650;",
+                "re_understand": "&#8635;", "reflect": "&#9651;", "start": "&#9656;",
+                "error": "&#10007;",
+            }
+            rows_html = ""
+            for ev in result.agent_trace:
+                ag  = ev.get("agent", "?")
+                act = ev.get("action", "")
+                msg = ev.get("message", "")
+                clr, bg = _AGENT_COLORS.get(ag, ("#64748b", "#1e293b"))
+                icon = _ACTION_ICONS.get(act, "&#9656;")
+                is_fail = act in ("failed", "error")
+                is_reflect = ag == "R"
+                label = f"Agent {ag}" if isinstance(ag, int) else ("Reflection" if ag == "R" else str(ag))
+                rows_html += f"""
+                <div style="display:flex;align-items:flex-start;gap:10px;padding:6px 0;
+                             border-bottom:1px solid rgba(255,255,255,0.04);">
+                    <div style="min-width:20px;font-size:11px;color:{'#ef4444' if is_fail else clr};
+                                margin-top:1px;">{icon}</div>
+                    <div style="display:inline-flex;align-items:center;gap:6px;min-width:130px;">
+                        <span style="font-size:10px;font-weight:700;letter-spacing:.06em;
+                                     text-transform:uppercase;color:{clr};
+                                     background:{bg}33;border:1px solid {clr}33;
+                                     border-radius:5px;padding:2px 7px;">{label}</span>
+                    </div>
+                    <div style="font-size:12.5px;color:{'#fca5a5' if is_fail else ('#fcd34d' if is_reflect else '#94a3b8')};
+                                line-height:1.5;">{msg}</div>
+                </div>"""
+
+            with st.expander("Agent execution trace", expanded=(result.retry_count > 0)):
+                st.markdown(f"""
+                <div style="font-family:monospace;padding:4px 0;">{rows_html}</div>
+                """, unsafe_allow_html=True)
 
         if not result.success:
             st.markdown(f"""
@@ -174,8 +219,8 @@ if run_btn:
             </div>""", unsafe_allow_html=True)
 
             # ── Tabs ──────────────────────────────────────────────────────────
-            tab_chart, tab_data, tab_sql, tab_intent = st.tabs(
-                ["Chart", "Data Table", "SQL", "Intent JSON"]
+            tab_chart, tab_data, tab_sql, tab_intent, tab_trace = st.tabs(
+                ["Chart", "Data Table", "SQL", "Intent JSON", "Agent Trace"]
             )
 
             with tab_chart:
@@ -214,6 +259,52 @@ if run_btn:
             with tab_intent:
                 if result.intent:
                     st.json(result.intent)
+
+            with tab_trace:
+                if result.agent_trace:
+                    _STEP_COLORS = {
+                        1: "#3b82f6", 2: "#06b6d4", 3: "#8b5cf6",
+                        4: "#10b981", 5: "#f59e0b", "R": "#ef4444",
+                    }
+                    for step in result.agent_trace:
+                        ag  = step.get("agent", "?")
+                        act = step.get("action", "")
+                        msg = step.get("message", "")
+                        clr = _STEP_COLORS.get(ag, "#64748b")
+                        lbl = (f"Agent {ag} — {step.get('name', '')}"
+                               if isinstance(ag, int) else step.get("name", str(ag)))
+                        is_fail = act in ("failed", "error")
+                        # Extra detail fields (sql, plan, intent, etc.)
+                        extras = {k: v for k, v in step.items()
+                                  if k not in ("agent","action","message","name")
+                                  and v is not None and v != ""}
+                        st.markdown(f"""
+                        <div style="display:flex;gap:12px;padding:10px 0;
+                                    border-bottom:1px solid rgba(255,255,255,0.05);">
+                            <div style="width:3px;border-radius:2px;flex-shrink:0;
+                                        background:{'#ef4444' if is_fail else clr};"></div>
+                            <div style="flex:1;">
+                                <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;
+                                            text-transform:uppercase;color:{clr};margin-bottom:3px;">
+                                    {lbl}
+                                </div>
+                                <div style="font-size:13px;color:{'#fca5a5' if is_fail else '#cbd5e1'};">
+                                    {msg}
+                                </div>
+                            </div>
+                        </div>""", unsafe_allow_html=True)
+                        if "sql" in extras:
+                            st.code(extras.pop("sql"), language="sql")
+                        if "plan" in extras:
+                            st.markdown(f"""
+                            <div style="margin:4px 0 0 15px;font-size:12px;color:#f59e0b;
+                                        font-style:italic;line-height:1.5;">
+                                Fix plan: {extras.pop('plan')}
+                            </div>""", unsafe_allow_html=True)
+                        if "intent" in extras:
+                            st.json(extras.pop("intent"))
+                else:
+                    st.info("No trace available for this run.")
 
             # ── Insights ──────────────────────────────────────────────────────
             if result.insights:

@@ -25,13 +25,22 @@ Available tables: fact_sales, dim_customers, dim_products, dim_sellers, dim_time
 """
 
 
-def understand_query(user_query: str) -> dict:
-    logger.debug(f"Agent 1 input: {user_query}")
+def understand_query(user_query: str, context: str = "") -> dict:
+    """Parse natural-language query into structured intent JSON.
+
+    context: optional clarification injected when the pipeline re-runs Agent 1
+             after an incomplete intent or a reflection recommendation.
+    """
+    logger.debug(f"Agent 1 input: {user_query}" + (f" [ctx: {context[:60]}]" if context else ""))
+
+    user_msg = user_query
+    if context:
+        user_msg += f"\n\n[Re-analysis guidance: {context}]"
 
     content = chat(
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": user_query},
+            {"role": "user", "content": user_msg},
         ],
         json_mode=True,
         temperature=0,
